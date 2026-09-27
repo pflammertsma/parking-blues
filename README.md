@@ -176,3 +176,24 @@ Known MVP limitations (intentional, not oversights): single in-memory
 session store (no persistence, no auth), fixture data instead of a real
 feed, parking spots modeled as points rather than curb-segment geometry,
 and no garage/Parkleitsystem integration yet.
+
+## 10. Deploying the web MVP to GCP
+
+`deploy/gcloud.sh <project-id> <billing-account-id> [region]` provisions a
+new GCP project and deploys to Cloud Run in one go (region defaults to
+`europe-west6`, Zurich). It assumes `gcloud auth login` is already done and
+you have a billing account to link (`gcloud billing accounts list`).
+Requires `gcloud` locally -- it cannot be run from a Claude Code on the
+web session, which has no access to your machine's credentials.
+
+Under the hood this is a plain `gcloud run deploy --source .`: Cloud
+Run's buildpack detects `requirements.txt` and `Procfile` and runs
+`gunicorn -b :$PORT main:app` (`main.py` is the production WSGI
+entrypoint -- Flask's own dev server, used by `python -m backend.app`
+locally, explicitly isn't meant for this).
+
+The deploy pins `--max-instances=1`. `SessionStore` (backend/session.py)
+keeps sessions in an in-memory dict scoped to one process; Cloud Run
+scaling out to multiple instances would silently drop sessions created on
+a different one. That's fine for a low-traffic MVP demo, not for real
+concurrent load -- see the "known MVP limitations" note in section 9.
