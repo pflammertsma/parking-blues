@@ -5,8 +5,12 @@ const DEFAULT_ORIGIN = { lat: 47.379198, lon: 8.531307 };
 const $ = (id) => document.getElementById(id);
 
 const map = L.map("map").setView([DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lon], 16);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: "&copy; OpenStreetMap contributors",
+// CartoDB's "Positron" basemap: a light, minimal OSM-derived style that
+// keeps streets/labels/buildings/rail but drops the POI icon clutter
+// (restaurants, shops, etc.) of the default OSM tiles.
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+  attribution:
+    "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors &copy; <a href=\"https://carto.com/attributions\">CARTO</a>",
   maxZoom: 19,
 }).addTo(map);
 
