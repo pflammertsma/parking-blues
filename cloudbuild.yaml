@@ -1,0 +1,17 @@
+# Cloud Build config for continuous deployment: a push to `main` on GitHub
+# runs this via the Cloud Build trigger set up in the parking-blues-mvp
+# project, which redeploys the Cloud Run service (see README section 10 for
+# the equivalent one-shot manual deploy this mirrors).
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - parking-blues
+      - --source=.
+      - --region=europe-west6
+      - --allow-unauthenticated
+      - --max-instances=1
+options:
+  logging: CLOUD_LOGGING_ONLY
