@@ -98,7 +98,7 @@ def create_app(store: SessionStore | None = None) -> Flask:
             lon = float(data["lon"])
         except (KeyError, TypeError, ValueError):
             return jsonify(error="lat and lon are required numbers"), 400
-        event = session.update_position(lat, lon)
+        event = store.update_position(session, lat, lon)
         return jsonify(session_json(session, event=event))
 
     @app.post("/api/session/<session_id>/reject")
@@ -106,16 +106,16 @@ def create_app(store: SessionStore | None = None) -> Flask:
         session = store.get(session_id)
         if session is None:
             return jsonify(error="session not found"), 404
-        session.reject_current()
-        return jsonify(session_json(session, event="rejected"))
+        event = store.reject_current(session)
+        return jsonify(session_json(session, event=event))
 
     @app.post("/api/session/<session_id>/confirm")
     def confirm(session_id: str):
         session = store.get(session_id)
         if session is None:
             return jsonify(error="session not found"), 404
-        session.confirm_current()
-        return jsonify(session_json(session, event="parked"))
+        event = store.confirm_current(session)
+        return jsonify(session_json(session, event=event))
 
     @app.post("/api/session/<session_id>/expand")
     def expand(session_id: str):

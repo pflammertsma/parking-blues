@@ -99,7 +99,8 @@ function renderMap(data) {
 function render(data) {
   if (data.event) {
     const target = data.current ? data.current.address_label : "(none)";
-    log(`${data.event} -> current target: ${target}`);
+    const radiusNote = data.event === "expanded" ? ` (radius now ${data.radius_m} m)` : "";
+    log(`${data.event}${radiusNote} -> current target: ${target}`);
   }
 
   renderSegment($("current"), data.current);

@@ -1,6 +1,12 @@
 from backend.geo import offset_point
 from backend.models import ParkingSegment, ZoneType
-from backend.session import APPROACH_THRESHOLD_M, DEPART_MARGIN_M, SessionState, SessionStore
+from backend.session import (
+    APPROACH_THRESHOLD_M,
+    DEPART_MARGIN_M,
+    MAX_RADIUS_M,
+    SessionState,
+    SessionStore,
+)
 
 ORIGIN_LAT, ORIGIN_LON = 47.3703, 8.5386
 
@@ -141,3 +147,61 @@ def test_expand_radius_reveals_previously_out_of_range_segments_and_keeps_reject
     assert session.radius_m == 400  # 200 + the 200m expansion step
     assert session.state == SessionState.SEARCHING
     assert [c.id for c in session.candidates] == ["far"]
+
+
+# The store-level wrappers below are what the API actually calls (see
+# backend/app.py): a driver in motion can't be left with a dead end just
+# because the current search radius has nothing left, so these auto-expand
+# instead of requiring a separate manual "expand" call.
+
+
+def test_create_auto_expands_when_starting_radius_has_nothing():
+    segments = [make_segment("far", 350)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
+    assert session.state == SessionState.SEARCHING
+    assert session.current.id == "far"
+    assert session.radius_m == 400
+
+
+def test_store_reject_current_auto_expands_instead_of_stopping():
+    segments = [make_segment("near", 100), make_segment("far", 350)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
+    assert session.current.id == "near"
+
+    event = store.reject_current(session)
+    assert event == "expanded"
+    assert session.state == SessionState.SEARCHING
+    assert session.current.id == "far"
+
+
+def test_store_update_position_auto_expands_instead_of_stopping():
+    segments = [make_segment("near", 100), make_segment("far", 350)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
+
+    store.update_position(session, *drive_position(100 - (APPROACH_THRESHOLD_M - 1)))
+    event = store.update_position(
+        session, *drive_position(100 + APPROACH_THRESHOLD_M + DEPART_MARGIN_M)
+    )
+    assert event == "expanded"
+    assert session.state == SessionState.SEARCHING
+    assert session.current.id == "far"
+
+
+def test_store_reject_current_reports_plain_rejected_when_more_candidates_remain():
+    segments = [make_segment("first", 100), make_segment("second", 150)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000)
+    event = store.reject_current(session)
+    assert event == "rejected"
+    assert session.current.id == "second"
+
+
+def test_auto_expand_gives_up_at_max_radius_for_a_genuinely_empty_area():
+    segments = [make_segment("only", 100, zone_type=ZoneType.WHITE)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
+    assert session.state == SessionState.EXHAUSTED
+    assert session.radius_m >= MAX_RADIUS_M
