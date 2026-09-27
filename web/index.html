@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Parking Blues (MVP)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,7 +12,15 @@
   <p class="hint">
     Extremely basic reference client for the matching/clustering/rejection
     algorithm described in the README. Fixture data only, centered on
-    Paradeplatz, Zurich -- see <code>backend/fixtures.py</code>.
+    the default start location, Zurich -- see <code>backend/fixtures.py</code>.
+  </p>
+
+  <div id="map"></div>
+  <p class="hint">
+    Drag the blue pin to set your start location. Once a search is
+    running, drag the red dot to simulate driving -- reach or pass a
+    highlighted candidate without confirming it, and it'll get
+    auto-rejected.
   </p>
 
   <section id="setup">
@@ -24,8 +33,7 @@
     </fieldset>
 
     <div class="position-row">
-      <label>Lat <input id="lat" type="number" step="0.00001" value="47.3703" /></label>
-      <label>Lon <input id="lon" type="number" step="0.00001" value="8.5386" /></label>
+      <span id="origin-readout">Start: 47.37920, 8.53131</span>
       <button id="use-geolocation">Use my location</button>
     </div>
 
@@ -45,17 +53,6 @@
       <button id="expand">Expand search radius</button>
     </div>
 
-    <h3>Simulate driving</h3>
-    <p class="hint">
-      Move the simulated position and send it, to see the "reached/passed
-      without stopping" auto-rejection logic (README section 4, steps 4-5).
-    </p>
-    <div class="position-row">
-      <label>Lat <input id="sim-lat" type="number" step="0.00001" /></label>
-      <label>Lon <input id="sim-lon" type="number" step="0.00001" /></label>
-      <button id="send-position">Send position</button>
-    </div>
-
     <h3>Up next</h3>
     <ol id="upcoming"></ol>
 
@@ -63,6 +60,7 @@
     <ul id="log"></ul>
   </section>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

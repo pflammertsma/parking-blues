@@ -1,6 +1,34 @@
 let sessionId = null;
 
+const DEFAULT_ORIGIN = { lat: 47.379198, lon: 8.531307 };
+
 const $ = (id) => document.getElementById(id);
+
+const map = L.map("map").setView([DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lon], 16);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "&copy; OpenStreetMap contributors",
+  maxZoom: 19,
+}).addTo(map);
+
+const originMarker = L.marker([DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lon], {
+  draggable: true,
+}).addTo(map).bindTooltip("Start", { permanent: true, direction: "top" });
+
+const youIcon = L.divIcon({
+  className: "you-marker",
+  html: '<div class="you-dot"></div>',
+  iconSize: [16, 16],
+});
+let youMarker = null;
+let radiusCircle = null;
+let candidateLayer = L.layerGroup().addTo(map);
+
+function updateOriginReadout() {
+  const { lat, lng } = originMarker.getLatLng();
+  $("origin-readout").textContent = `Start: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
+originMarker.on("dragend", updateOriginReadout);
 
 function log(message) {
   const li = document.createElement("li");
@@ -29,6 +57,41 @@ function renderSegment(container, segment) {
   `;
 }
 
+function candidateMarker(segment, highlighted) {
+  const color = segment.zone_type === "blue" ? "#1560bd" : "#555";
+  return L.circleMarker([segment.lat, segment.lon], {
+    radius: highlighted ? 10 : 6,
+    color,
+    fillColor: color,
+    fillOpacity: highlighted ? 0.9 : 0.4,
+    weight: highlighted ? 3 : 1,
+  }).bindPopup(
+    `<strong>${segment.address_label}</strong><br>${segment.zone_type} zone, ${segment.distance_m} m`
+  );
+}
+
+function renderMap(data) {
+  candidateLayer.clearLayers();
+  if (data.current) {
+    candidateMarker(data.current, true).addTo(candidateLayer);
+  }
+  for (const segment of data.upcoming) {
+    candidateMarker(segment, false).addTo(candidateLayer);
+  }
+
+  if (radiusCircle) {
+    radiusCircle.setLatLng([data.origin.lat, data.origin.lon]);
+    radiusCircle.setRadius(data.radius_m);
+  } else {
+    radiusCircle = L.circle([data.origin.lat, data.origin.lon], {
+      radius: data.radius_m,
+      color: "#888",
+      fill: false,
+      dashArray: "4 4",
+    }).addTo(map);
+  }
+}
+
 function render(data) {
   if (data.event) {
     const target = data.current ? data.current.address_label : "(none)";
@@ -36,6 +99,7 @@ function render(data) {
   }
 
   renderSegment($("current"), data.current);
+  renderMap(data);
 
   const exhausted = data.state === "exhausted";
   $("exhausted").hidden = !exhausted;
@@ -43,7 +107,6 @@ function render(data) {
   const active = data.state === "searching";
   $("confirm").disabled = !active;
   $("reject").disabled = !active;
-  $("send-position").disabled = !active;
 
   if (data.state === "parked") {
     $("current").innerHTML += "<div><strong>Parked. Session complete.</strong></div>";
@@ -77,26 +140,39 @@ $("use-geolocation").addEventListener("click", () => {
   }
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      $("lat").value = pos.coords.latitude.toFixed(5);
-      $("lon").value = pos.coords.longitude.toFixed(5);
+      const { latitude, longitude } = pos.coords;
+      originMarker.setLatLng([latitude, longitude]);
+      map.setView([latitude, longitude], 16);
+      updateOriginReadout();
     },
     (err) => log(`Geolocation failed: ${err.message}`)
   );
 });
 
 $("start").addEventListener("click", async () => {
-  const lat = parseFloat($("lat").value);
-  const lon = parseFloat($("lon").value);
+  const { lat, lng } = originMarker.getLatLng();
   const zone = selectedZone();
   const data = await api("/api/session", {
     method: "POST",
-    body: JSON.stringify({ lat, lon, zone }),
+    body: JSON.stringify({ lat, lon: lng, zone }),
   });
   sessionId = data.session_id;
   $("setup").hidden = true;
   $("session").hidden = false;
-  $("sim-lat").value = lat.toFixed(5);
-  $("sim-lon").value = lon.toFixed(5);
+
+  originMarker.dragging.disable();
+  youMarker = L.marker([lat, lng], { draggable: true, icon: youIcon })
+    .addTo(map)
+    .bindTooltip("You (drag to simulate driving)", { direction: "top" });
+  youMarker.on("dragend", async () => {
+    const pos = youMarker.getLatLng();
+    const body = await api(`/api/session/${sessionId}/position`, {
+      method: "POST",
+      body: JSON.stringify({ lat: pos.lat, lon: pos.lng }),
+    });
+    render(body);
+  });
+
   log(`Session started (radius ${data.radius_m} m)`);
   render(data);
 });
@@ -113,15 +189,5 @@ $("reject").addEventListener("click", async () => {
 
 $("expand").addEventListener("click", async () => {
   const data = await api(`/api/session/${sessionId}/expand`, { method: "POST" });
-  render(data);
-});
-
-$("send-position").addEventListener("click", async () => {
-  const lat = parseFloat($("sim-lat").value);
-  const lon = parseFloat($("sim-lon").value);
-  const data = await api(`/api/session/${sessionId}/position`, {
-    method: "POST",
-    body: JSON.stringify({ lat, lon }),
-  });
   render(data);
 });

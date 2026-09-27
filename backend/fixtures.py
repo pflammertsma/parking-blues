@@ -10,9 +10,9 @@ require touching anything else -- callers only depend on `ALL_SEGMENTS`.
 from .geo import offset_point
 from .models import ParkingSegment, ZoneType
 
-# Roughly Paradeplatz, central Zurich.
-ORIGIN_LAT = 47.3703
-ORIGIN_LON = 8.5386
+# Default start location (central Zurich).
+ORIGIN_LAT = 47.379198
+ORIGIN_LON = 8.531307
 
 
 def _segment(
