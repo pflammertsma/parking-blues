@@ -144,3 +144,35 @@ Once step 4/6 of the algorithm (confirmed parked / confirmed rejected) is happen
 6. **Android Auto / CarPlay** integration.
 7. **Garage mode** (Parkhaus + real-time occupancy via ParkenDD) as an additive mode.
 8. **Crowdsourced fill-probability model** (§7).
+
+## 9. Web MVP (milestone 3, in progress)
+
+An extremely basic reference implementation of the algorithm in §4, as a
+web app instead of a native mobile client, to validate the logic before
+investing in Android/iOS/Auto/CarPlay:
+
+- `backend/` — Flask JSON API + the algorithm itself (`geo.py`,
+  `clustering.py`, `session.py`), backed by hand-written fixture data
+  (`fixtures.py`) standing in for the real Zurich feed until §2.4/§6.1 is
+  resolved.
+- `web/` — a single static page (vanilla HTML/CSS/JS, no build step) that
+  drives the API: pick a zone, start a search, and either use real
+  geolocation or a manual lat/lon field to simulate "driving" past
+  candidate spots and watch the auto-rejection logic kick in.
+- `tests/` — pytest coverage for the geo helpers, clustering/ranking, the
+  session state machine (including simulated drive-by sequences), and the
+  HTTP API.
+
+Run it:
+
+```
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m backend.app        # serves http://127.0.0.1:5000
+pytest                        # run the test suite
+```
+
+Known MVP limitations (intentional, not oversights): single in-memory
+session store (no persistence, no auth), fixture data instead of a real
+feed, parking spots modeled as points rather than curb-segment geometry,
+and no garage/Parkleitsystem integration yet.
