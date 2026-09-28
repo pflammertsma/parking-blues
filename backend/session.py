@@ -21,6 +21,13 @@ RADIUS_EXPANSION_STEP_M = 200.0
 # growing forever.
 MAX_RADIUS_M = 2000.0
 
+# Real Zurich data is dense enough that a wide radius in the city center can
+# match thousands of segments (see README section 9), and clustering is
+# O(n^2) -- bound it to the nearest N so a session can never trigger an
+# unbounded/slow clustering pass regardless of how dense or wide the search
+# gets. The nearest ones are what would get suggested first anyway.
+MAX_CANDIDATES_PER_QUERY = 300
+
 # "Reached" the spot: within this distance of the target.
 APPROACH_THRESHOLD_M = 20.0
 # "Passed without stopping": moved at least this much farther away *after*
@@ -111,14 +118,17 @@ class SessionStore:
         self, zone_filter: set[ZoneType], radius_m: float, origin_lat: float,
         origin_lon: float, exclude_ids: set[str],
     ) -> list[ParkingSegment]:
-        in_scope = [
-            seg
-            for seg in self._all_segments
-            if seg.matches(zone_filter)
-            and seg.id not in exclude_ids
-            and haversine_m(origin_lat, origin_lon, seg.lat, seg.lon) <= radius_m
-        ]
-        return build_candidate_order(in_scope, origin_lat, origin_lon)
+        in_scope = []
+        for seg in self._all_segments:
+            if seg.id in exclude_ids or not seg.matches(zone_filter):
+                continue
+            distance_m = haversine_m(origin_lat, origin_lon, seg.lat, seg.lon)
+            if distance_m <= radius_m:
+                in_scope.append((distance_m, seg))
+
+        in_scope.sort(key=lambda pair: pair[0])
+        nearest = [seg for _, seg in in_scope[:MAX_CANDIDATES_PER_QUERY]]
+        return build_candidate_order(nearest, origin_lat, origin_lon)
 
     def create(
         self,
