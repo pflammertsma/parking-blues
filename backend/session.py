@@ -28,6 +28,15 @@ MAX_RADIUS_M = 2000.0
 # gets. The nearest ones are what would get suggested first anyway.
 MAX_CANDIDATES_PER_QUERY = 300
 
+# If the driver ends up farther from their current target than this, they've
+# clearly left the area it was chosen for -- e.g. drove straight past the
+# whole search region rather than working through it -- so it's worth
+# checking what's actually near them now rather than continuing to point
+# back at a target this far away, even if that target's cluster still has
+# other untried members. Same distance as a fresh local search, since
+# that's what re-anchors on the driver -- see _pull_in_local_cluster.
+LOCAL_SEARCH_TRIGGER_M = DEFAULT_INITIAL_RADIUS_M
+
 # "Reached" the spot: within this distance of the target.
 APPROACH_THRESHOLD_M = 20.0
 # "Passed without stopping": moved at least this much farther away *after*
@@ -259,9 +268,12 @@ class SessionStore:
         return "parked"
 
     def _pull_in_local_cluster(self, session: ParkingSession, lat: float, lon: float) -> bool:
-        """When the driver's current cluster just ran out, the next one up
-        is whatever's next in the destination-ranked order -- which could
-        mean sending them clear across the map (or a barrier) rather than
+        """Called when the driver's current cluster just ran out, or when
+        they've simply drifted far from their current target (e.g. drove
+        straight out of the whole search area). Either way, the fallback
+        would otherwise be whatever's next in the fixed, destination-ranked
+        order -- which could mean sending them clear across the map (or a
+        barrier), or back toward a region they've already left, rather than
         widening the search right around where they actually are. Look for
         anything new near the driver first; only fall back to the existing,
         possibly-distant queue if nothing turns up locally. Returns True if
@@ -292,7 +304,14 @@ class SessionStore:
         if session.state == SessionState.SEARCHING:
             cluster_after = {s.id for s in session.candidates[0]}
             moved_to_new_cluster = cluster_before and cluster_before.isdisjoint(cluster_after)
-            if moved_to_new_cluster and self._pull_in_local_cluster(session, lat, lon):
+            drifted_far_from_target = (
+                haversine_m(lat, lon, session.current.lat, session.current.lon)
+                > LOCAL_SEARCH_TRIGGER_M
+            )
+            if (
+                (moved_to_new_cluster or drifted_far_from_target)
+                and self._pull_in_local_cluster(session, lat, lon)
+            ):
                 event = "retargeted"
 
         if session.state == SessionState.EXHAUSTED:

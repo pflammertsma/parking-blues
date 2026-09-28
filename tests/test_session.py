@@ -228,6 +228,30 @@ def test_cluster_exhaustion_pulls_in_a_new_local_cluster_before_falling_back():
     assert any(c.id == "far" for c in session.upcoming)
 
 
+def test_drifting_far_from_the_target_pulls_in_a_local_cluster_without_exhausting_it():
+    # The driver never gets close enough to "target" to trigger an
+    # approach/depart cycle -- they just drive straight out of the whole
+    # search area in one move. Even though "target"'s cluster still has it
+    # as an untouched, un-rejected member, the app shouldn't keep pointing
+    # back at it once the driver is clearly nowhere near it anymore -- it
+    # should notice "local", right where the driver actually ended up.
+    segments = [
+        make_segment("target", 100),
+        make_segment("local", 100, east_m=-500),
+    ]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
+    assert session.current.id == "target"
+
+    lat, lon = offset_point(ORIGIN_LAT, ORIGIN_LON, 100, -500)
+    event = store.update_position(session, lat, lon)
+
+    assert event == "retargeted"
+    assert session.current.id == "local"
+    assert "target" not in session.rejected_ids
+    assert any(c.id == "target" for c in session.upcoming)
+
+
 def test_auto_rejecting_the_last_candidate_reports_exhausted():
     segments = [make_segment("only", 100)]
     store = SessionStore(segments)
