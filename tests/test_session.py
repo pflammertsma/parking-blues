@@ -207,16 +207,15 @@ def test_cluster_exhaustion_pulls_in_a_new_local_cluster_before_falling_back():
     # "near" and "far" are both known from the start (separate clusters,
     # both within the initial radius); "local" is outside that initial
     # radius, so it's undiscovered until the driver actually gets near it.
-    # The local search runs every tick (not just on exhaustion -- waiting
-    # for that would mean driving blind in the meantime), so "local" gets
-    # pulled in as soon as the driver's approach puts it in range, ahead of
-    # "near" even being rejected. Once "near" *is* rejected, "far" -- next
-    # in the original destination-ranked order -- should still be sitting
-    # in reserve rather than having been discarded.
+    # It's placed so that once "near" is rejected, it's genuinely closer to
+    # the driver than "far" (next in the original destination-ranked
+    # order) by more than LOCAL_PULL_IN_MARGIN_M -- a merely-new-but-not-
+    # actually-closer candidate should *not* win (see the margin test
+    # below); this one legitimately should.
     segments = [
         make_segment("near", 100),
         make_segment("far", 100, east_m=100),
-        make_segment("local", 100, east_m=-200),
+        make_segment("local", 135, east_m=70),
     ]
     store = SessionStore(segments)
     session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=150)
@@ -228,10 +227,39 @@ def test_cluster_exhaustion_pulls_in_a_new_local_cluster_before_falling_back():
         session, *drive_position(100 + APPROACH_THRESHOLD_M + DEPART_MARGIN_M)
     )
 
-    assert event == "auto_rejected"
+    # Both an auto-rejection and a pull-in happen on this same tick; only
+    # one event name can be reported, and "retargeted" is what the caller
+    # actually needs to know (the target changed) -- the rejection itself
+    # is still fully reflected in the state below.
+    assert event == "retargeted"
     assert "near" in session.rejected_ids
     assert session.current.id == "local"
     assert any(c.id == "far" for c in session.upcoming)
+
+
+def test_local_pull_in_ignores_a_merely_new_candidate_that_is_not_closer():
+    # This is the actual bug report this margin exists to fix: driving down
+    # a street continuously surfaces new-to-the-session candidates on
+    # almost every position tick just because the search window moved with
+    # the driver -- not because they're any better than the current
+    # target. Without a margin, every one of those would win by virtue of
+    # being new, making the target flicker constantly while driving.
+    # "far" is known from the start; "elsewhere" only becomes discoverable
+    # once the driver is close enough, but it's farther from the driver
+    # than "far" already is, so it should be ignored.
+    segments = [
+        make_segment("far", 100, east_m=100),
+        make_segment("elsewhere", 100, east_m=-160),
+    ]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=150)
+    assert candidate_ids(session) == ["far"]  # "elsewhere" not yet known
+
+    lat, lon = drive_position(100)
+    event = store.update_position(session, lat, lon)
+
+    assert event == "tracking"
+    assert session.current.id == "far"
 
 
 def test_drifting_far_from_the_target_pulls_in_a_local_cluster_without_exhausting_it():

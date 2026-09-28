@@ -300,6 +300,27 @@ Verified against the real default search point: "both zones" now picks a
 white-zone spot 55.9m away instead of jumping to a blue cluster 230.6m
 away for more aggregate capacity.
 
+### 9.5 Retargeting was flickering constantly while driving
+
+Separate bug, reported as "the target keeps jumping while the vehicle
+moves": `SessionStore._pull_in_local_cluster` runs on every position
+update (not just on exhaustion or real drift -- see the "checked every
+tick" reasoning in `update_position`), searching a radius around the
+driver's *current* position for anything not yet in the session. As the
+car moves, that search window moves with it, so it surfaces some
+not-yet-seen segment almost every tick -- purely because the window
+shifted, not because that segment is any better than what's already
+targeted. The old code accepted any non-empty find unconditionally, so
+the target reshuffled to whatever was merely *new* on nearly every tick.
+
+Fixed by only accepting a local find when it beats the current target by
+more than `LOCAL_PULL_IN_MARGIN_M` (15m) -- still checked every tick (so
+a genuinely better spot is still picked up immediately), but no longer
+treats "new" as synonymous with "better". Verified with a 60-tick
+simulated drive (~2m/tick, ~120m total) along real data: 5 retargets, each
+moving sequentially to the next real spot the driver was actually passing
+closer to -- not the near-every-tick churn the bug report described.
+
 ## 10. Deploying the web MVP to GCP
 
 `deploy/gcloud.sh <project-id> <billing-account-id> [region]` provisions a

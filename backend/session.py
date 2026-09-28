@@ -37,6 +37,16 @@ APPROACH_THRESHOLD_M = 20.0
 # having gotten within APPROACH_THRESHOLD_M, without a confirm in between.
 DEPART_MARGIN_M = 15.0
 
+# _pull_in_local_cluster only retargets when the best newly-found local
+# candidate beats the current one by at least this much -- without a
+# margin (or any comparison at all), calling it every position-update tick
+# surfaces some "new" candidate almost every tick just because the search
+# window moved with the driver, regardless of whether it's actually any
+# better than what's already targeted, which made the target flicker
+# constantly while driving instead of only changing when something
+# meaningfully closer shows up.
+LOCAL_PULL_IN_MARGIN_M = 15.0
+
 
 class SessionState(str, Enum):
     SEARCHING = "searching"
@@ -283,16 +293,21 @@ class SessionStore:
     def _pull_in_local_cluster(
         self, session: ParkingSession, lat: float, lon: float, now: datetime
     ) -> bool:
-        """Called when the driver's current cluster just ran out, or when
-        they've simply drifted far from their current target (e.g. drove
-        straight out of the whole search area). Either way, the fallback
-        would otherwise be whatever's next in the fixed, destination-ranked
-        order -- which could mean sending them clear across the map (or a
-        barrier), or back toward a region they've already left, rather than
-        widening the search right around where they actually are. Look for
-        anything new near the driver first; only fall back to the existing,
-        possibly-distant queue if nothing turns up locally. Returns True if
-        a local cluster was found and prepended.
+        """Called on every position update (see update_position) so a
+        driver who's drifted away from their current target -- or straight
+        out of the whole search area -- gets offered whatever's actually
+        near them, instead of whatever's next in the fixed, destination-
+        ranked order (which could mean sending them clear across the map,
+        over a barrier, or back toward a region they've already left).
+        Look for anything new near the driver first; only fall back to the
+        existing, possibly-distant queue if nothing turns up locally.
+
+        Only actually retargets if the best local find beats the current
+        target by more than LOCAL_PULL_IN_MARGIN_M -- calling this every
+        tick means it turns up some "new" (not-yet-seen) candidate almost
+        constantly just because the search window moved with the driver;
+        without this check every one of those would win by virtue of being
+        new, not by being any closer. Returns True if it did.
         """
         known_ids = session.rejected_ids | {
             seg.id for cluster in session.candidates for seg in cluster
@@ -306,6 +321,14 @@ class SessionStore:
         local_clusters.sort(
             key=lambda cluster: min(haversine_m(lat, lon, s.lat, s.lon) for s in cluster)
         )
+        best_local_distance = min(
+            haversine_m(lat, lon, s.lat, s.lon) for s in local_clusters[0]
+        )
+        current_target = session.candidates[0][0]
+        current_distance = haversine_m(lat, lon, current_target.lat, current_target.lon)
+        if best_local_distance >= current_distance - LOCAL_PULL_IN_MARGIN_M:
+            return False
+
         session.candidates = local_clusters + session.candidates
         return True
 
@@ -316,13 +339,6 @@ class SessionStore:
         event = session.update_position(lat, lon)
 
         if session.state == SessionState.SEARCHING:
-            # Checked every tick, not just once the driver has already
-            # drifted well past the target -- by the time a distance
-            # threshold would trip, they'd have already been driving blind
-            # for a while. _pull_in_local_cluster excludes anything already
-            # known and only changes candidates when it finds something
-            # genuinely new nearby, so calling it continuously is cheap and
-            # can't cause flip-flopping.
             if self._pull_in_local_cluster(session, lat, lon, now):
                 event = "retargeted"
 
