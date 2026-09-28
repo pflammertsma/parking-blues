@@ -3,13 +3,18 @@ machine, plus the static web/ MVP UI. See README section 8, milestone 3.
 """
 
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from flask import Flask, jsonify, request
 
+from .blue_zone_rules import blue_zone_deadline
 from .parking_data import ALL_SEGMENTS
 from .geo import haversine_m
 from .models import ParkingSegment, ZoneType
 from .session import ParkingSession, SessionStore
+
+ZURICH_TZ = ZoneInfo("Europe/Zurich")
 
 ZONE_FILTERS: dict[str, set[ZoneType]] = {
     "blue": {ZoneType.BLUE},
@@ -26,7 +31,7 @@ def create_app(store: SessionStore | None = None) -> Flask:
     store = store or SessionStore(ALL_SEGMENTS)
 
     def segment_json(segment: ParkingSegment, origin_lat: float, origin_lon: float) -> dict:
-        return {
+        body = {
             "id": segment.id,
             "lat": segment.lat,
             "lon": segment.lon,
@@ -38,6 +43,15 @@ def create_app(store: SessionStore | None = None) -> Flask:
                 haversine_m(origin_lat, origin_lon, segment.lat, segment.lon), 1
             ),
         }
+        if segment.zone_type == ZoneType.BLUE:
+            # Computed as if arriving right now, in Zurich local time --
+            # NOT datetime.now(), which is the server's own timezone (UTC
+            # on Cloud Run) and would silently misjudge which rule window
+            # applies. See backend/blue_zone_rules.py for the actual
+            # (time-of-day-dependent) rule; a flat "60 min" is not it.
+            deadline = blue_zone_deadline(datetime.now(ZURICH_TZ))
+            body["legal_until"] = deadline.isoformat() if deadline else None
+        return body
 
     def session_json(session: ParkingSession, event: str | None = None) -> dict:
         body = {

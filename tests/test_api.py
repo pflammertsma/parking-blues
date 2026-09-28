@@ -80,6 +80,26 @@ def test_full_drive_by_flow_via_the_api(client):
     assert body["rejected_count"] == 1
 
 
+def test_blue_zone_segments_carry_a_legal_until_field_white_zone_does_not(client):
+    segments = [
+        make_segment("blue-spot", 50, zone_type=ZoneType.BLUE),
+        make_segment("white-spot", 60, zone_type=ZoneType.WHITE),
+    ]
+    app = create_app(store=SessionStore(segments))
+    app.config.update(TESTING=True)
+    local_client = app.test_client()
+
+    created = local_client.post(
+        "/api/session", json={"lat": ORIGIN_LAT, "lon": ORIGIN_LON, "zone": "both"}
+    ).get_json()
+    assert created["current"]["id"] == "blue-spot"
+    assert "legal_until" in created["current"]
+
+    white = created["upcoming"][0]
+    assert white["id"] == "white-spot"
+    assert "legal_until" not in white
+
+
 def test_confirm_marks_session_parked(client):
     created = client.post(
         "/api/session", json={"lat": ORIGIN_LAT, "lon": ORIGIN_LON, "zone": "both"}

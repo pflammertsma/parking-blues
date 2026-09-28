@@ -52,15 +52,28 @@ function selectedZone() {
   return document.querySelector('input[name="zone"]:checked').value;
 }
 
+function formatDuration(segment) {
+  if (segment.zone_type === "blue") {
+    if (!segment.legal_until) {
+      // Sundays (and, not modeled, public holidays) are unrestricted.
+      return "no time limit right now";
+    }
+    const until = new Date(segment.legal_until);
+    const label = until.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return `park until ~${label} (set your disc)`;
+  }
+  return segment.max_duration_minutes
+    ? `${segment.max_duration_minutes} min max`
+    : "no fixed limit";
+}
+
 function renderSegment(container, segment) {
   if (!segment) {
     container.textContent = "No candidates.";
     return;
   }
   const zoneClass = segment.zone_type === "blue" ? "zone-blue" : "zone-white";
-  const duration = segment.max_duration_minutes
-    ? `${segment.max_duration_minutes} min max`
-    : "no fixed limit";
+  const duration = formatDuration(segment);
   container.innerHTML = `
     <div class="${zoneClass}">${segment.zone_type.toUpperCase()} ZONE</div>
     <div>${segment.address_label}</div>

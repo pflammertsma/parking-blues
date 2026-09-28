@@ -154,6 +154,8 @@ investing in Android/iOS/Auto/CarPlay:
 - `backend/` — Flask JSON API + the algorithm itself (`geo.py`,
   `clustering.py`, `session.py`), backed by real Zurich data
   (`parking_data.py`, loading the snapshot in `data/zurich_parking.json`).
+- `backend/blue_zone_rules.py` — the actual Blue Zone time rule (see
+  below), not the flat "60 min" the ingested data alone would suggest.
 - `scripts/ingest_zurich_parking.py` — fetches the City of Zurich's
   official "Öffentlich zugängliche Strassenparkplätze OGD" dataset (CC0,
   ~45k blue/white-zone points; see §2.3) via its WFS endpoint and
@@ -187,6 +189,37 @@ and there's no garage/Parkleitsystem integration yet. Real-data density
 also means clustering (O(n^2)) is capped to the nearest
 `MAX_CANDIDATES_PER_QUERY` segments per query rather than run over
 everything in radius -- see `backend/session.py`.
+
+### 9.1 Blue Zone: what "60 minutes" actually means
+
+The ingested data's `max_duration_minutes` for blue-zone spots is a flat
+60 for 99.8% of them, but the real rule (confirmed against the city's own
+page, stadt-zuerich.ch/.../parkscheibe.html) is time-of-day and
+day-of-week dependent, not a flat 60-minute-from-arrival window:
+
+- Restricted only Monday–Saturday, 08:00–11:30 and 13:30–18:00.
+- The parking disc's dial must be set to the half-hour mark *following*
+  arrival (arriving exactly on a mark still advances to the next one),
+  then 60 minutes from there -- so the real usable time is
+  60–90 minutes depending on arrival minute, not a flat 60.
+- Free lunch hour: arriving 11:30–13:30 is unrestricted, with a grace
+  deadline of 14:30 regardless of exact arrival time in that window.
+- Overnight (18:00–08:00) is unrestricted, with a grace deadline of 09:00
+  the next restricted-window morning.
+- Sundays are unrestricted unless additional signage says otherwise (not
+  modeled -- no per-street signage data).
+
+`backend/blue_zone_rules.py` encodes this as `blue_zone_deadline(arrival)`,
+and `backend/app.py` computes it as of "now" (in `Europe/Zurich`, not
+server-local time -- this container runs on UTC, and naively using
+`datetime.now()` without a timezone silently misjudges which rule window
+applies) for every blue-zone segment returned by the API, exposed as
+`legal_until`. Not modeled: Swiss/Zurich public holidays (same
+unrestricted treatment as Sundays, but there's no holiday calendar wired
+in) and multi-day continuous parking (a car that's been there since
+Saturday night, still parked when Monday's restricted hours resume) --
+this answers "what's the deadline for a single arrival right now", not
+"is this car currently legal given how long it's actually been there".
 
 ## 10. Deploying the web MVP to GCP
 
