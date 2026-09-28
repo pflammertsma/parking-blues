@@ -347,8 +347,10 @@ so this doesn't reopen the flickering that section fixed.
 
 `deploy/gcloud.sh <project-id> <billing-account-id> [region]` provisions a
 new GCP project and deploys to Cloud Run in one go (region defaults to
-`europe-west6`, Zurich). It assumes `gcloud auth login` is already done and
-you have a billing account to link (`gcloud billing accounts list`).
+`europe-west1` -- not `europe-west6`/Zurich, which would've been fitting,
+but Cloud Run domain mappings aren't available there; see section 11). It
+assumes `gcloud auth login` is already done and you have a billing account
+to link (`gcloud billing accounts list`).
 Requires `gcloud` locally -- it cannot be run from a Claude Code on the
 web session, which has no access to your machine's credentials.
 
@@ -393,18 +395,31 @@ allow-list of origins (`ALLOWED_ORIGINS`) rather than `*`, since a public
 `*` would let any third-party site create/drive sessions against this API
 using a visitor's own IP/browser as the requester.
 
-Two one-time steps outside this repo, requiring credentials this session
+Cloud Run **domain mappings** (`gcloud run domain-mappings create`, needed
+for the API subdomain below) only work in a fixed legacy list of regions,
+which does not include `europe-west6` (Zurich) -- attempting it there fails
+with `UNIMPLEMENTED`. That's why the service now deploys to `europe-west1`
+(Belgium) instead; see section 10.
+
+Three one-time steps outside this repo, requiring credentials this session
 doesn't have, so they need to be run by hand:
 
-1. **Cloud Run domain mapping** (in the `parking-blues-mvp` project):
-   `gcloud run domain-mappings create --service parking-blues --domain
-   api.parking-blues.lammertsma.dev --region europe-west6`. If
-   `lammertsma.dev` hasn't already been verified as owned in *that* GCP
-   project, `gcloud` will point you to Search Console's domain
-   verification first -- domain mappings are gated per-project, so
+1. **Redeploy the service to `europe-west1`** if it's currently only in
+   `europe-west6`: `gcloud run deploy parking-blues --source . --region
+   europe-west1 --allow-unauthenticated --max-instances=1` (from the repo
+   root, in the `parking-blues-mvp` project). Once it's confirmed working,
+   the old `europe-west6` revision can be deleted (`gcloud run services
+   delete parking-blues --region europe-west6`) to avoid paying for/
+   maintaining two.
+2. **Cloud Run domain mapping**: `gcloud beta run domain-mappings create
+   --service parking-blues --domain api.parking-blues.lammertsma.dev
+   --region europe-west1` (the mapping command lives under `gcloud beta`,
+   not the main track). If `lammertsma.dev` hasn't already been verified as
+   owned in *that* GCP project, `gcloud` will point you to Search Console's
+   domain verification first -- domain mappings are gated per-project, so
    verifying it once for `lammertsma-dev` (Firebase's project) doesn't
    carry over.
-2. **DNS** (Cloudflare, where `lammertsma.dev`'s DNS is managed): add the
+3. **DNS** (Cloudflare, where `lammertsma.dev`'s DNS is managed): add the
    CNAME record the domain-mappings command prints (typically
    `ghs.googlehosted.com`) for `api.parking-blues.lammertsma.dev`, set to
    **DNS only** (grey cloud, not proxied) -- Cloudflare's proxy interferes
