@@ -368,6 +368,16 @@ concurrent load -- see the "known MVP limitations" note in section 9.
 
 ## 11. Serving the frontend from lammertsma.dev + API on a subdomain
 
+**Current status: live.**
+
+- Frontend: <https://lammertsma.dev/projects/parking-blues>
+- API: `https://api.parking-blues.lammertsma.dev` (backed by the Cloud Run
+  service below; also reachable directly at its own Cloud Run URL,
+  `https://parking-blues-794638973209.europe-west1.run.app`, e.g. for
+  hitting the API without CORS during local frontend development)
+- Cloud Run service `parking-blues`, project `parking-blues-mvp`, region
+  `europe-west1`
+
 The MVP is also reachable at `lammertsma.dev/projects/parking-blues`, with
 the API on its own subdomain, `api.parking-blues.lammertsma.dev`. Two
 separate origins, not one proxied through the other -- `web/`'s frontend
@@ -415,14 +425,15 @@ with `UNIMPLEMENTED`. That's why the service now deploys to `europe-west1`
 (Belgium) instead; see section 10.
 
 Three one-time steps outside this repo, requiring credentials this session
-doesn't have, so they need to be run by hand:
+doesn't have -- already done for the current deployment, kept here for
+whoever (re)does this from scratch, e.g. after a project migration:
 
-1. **Redeploy the service to `europe-west1`** if it's currently only in
-   `europe-west6`: `gcloud run deploy parking-blues --source . --region
-   europe-west1 --allow-unauthenticated --max-instances=1` (from the repo
-   root, in the `parking-blues-mvp` project). Once it's confirmed working,
-   the old `europe-west6` revision can be deleted (`gcloud run services
-   delete parking-blues --region europe-west6`) to avoid paying for/
+1. **Deploy the service to `europe-west1`**: `gcloud run deploy
+   parking-blues --source . --region europe-west1 --allow-unauthenticated
+   --max-instances=1` (from the repo root, in the `parking-blues-mvp`
+   project). If migrating off an existing `europe-west6` deployment, delete
+   the old one once the new one's confirmed working (`gcloud run services
+   delete parking-blues --region europe-west6`), to avoid paying for/
    maintaining two.
 2. **Cloud Run domain mapping**: `gcloud beta run domain-mappings create
    --service parking-blues --domain api.parking-blues.lammertsma.dev
@@ -438,3 +449,10 @@ doesn't have, so they need to be run by hand:
    **DNS only** (grey cloud, not proxied) -- Cloudflare's proxy interferes
    with Google's automatic managed-certificate issuance/renewal for the
    mapping.
+
+The `LAMMERTSMA_DEV_PUSH_TOKEN`/`FIREBASE_TOKEN` repo secrets mentioned
+above are also already set -- confirmed via a manual
+`workflow_dispatch` run of `publish-frontend.yml` (checkout + push to
+`lammertsma-dev` succeeded; the Firebase deploy step itself only runs when
+there's an actual content change to publish, so it'll get its first real
+exercise on the next `web/` change).
