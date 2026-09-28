@@ -28,7 +28,12 @@ def create_app(store: SessionStore | None = None) -> Flask:
     store = store or SessionStore(ALL_SEGMENTS)
 
     def segment_json(
-        segment: ParkingSegment, origin_lat: float, origin_lon: float, now: datetime
+        segment: ParkingSegment,
+        origin_lat: float,
+        origin_lon: float,
+        you_lat: float,
+        you_lon: float,
+        now: datetime,
     ) -> dict:
         body = {
             "id": segment.id,
@@ -38,8 +43,15 @@ def create_app(store: SessionStore | None = None) -> Flask:
             "address_label": segment.address_label,
             "estimated_capacity": segment.estimated_capacity,
             "max_duration_minutes": segment.max_duration_minutes,
+            # Distance from the destination -- fixed for the life of the
+            # session, useful for judging "is this actually near where I'm
+            # headed". distance_from_you_m below is the one that matters
+            # moment-to-moment while driving.
             "distance_m": round(
                 haversine_m(origin_lat, origin_lon, segment.lat, segment.lon), 1
+            ),
+            "distance_from_you_m": round(
+                haversine_m(you_lat, you_lon, segment.lat, segment.lon), 1
             ),
         }
         if segment.zone_type == ZoneType.BLUE:
@@ -51,25 +63,19 @@ def create_app(store: SessionStore | None = None) -> Flask:
         return body
 
     def session_json(session: ParkingSession, now: datetime, event: str | None = None) -> dict:
+        args = (session.origin_lat, session.origin_lon, session.last_lat, session.last_lon, now)
         body = {
             "session_id": session.id,
             "state": session.state.value,
             "radius_m": session.radius_m,
             "origin": {"lat": session.origin_lat, "lon": session.origin_lon},
+            "you": {"lat": session.last_lat, "lon": session.last_lon},
             "preferred_duration_minutes": session.preferred_duration_minutes,
             "current": (
-                segment_json(session.current, session.origin_lat, session.origin_lon, now)
-                if session.current
-                else None
+                segment_json(session.current, *args) if session.current else None
             ),
-            "upcoming": [
-                segment_json(s, session.origin_lat, session.origin_lon, now)
-                for s in session.upcoming
-            ],
-            "rejected": [
-                segment_json(s, session.origin_lat, session.origin_lon, now)
-                for s in session.rejected
-            ],
+            "upcoming": [segment_json(s, *args) for s in session.upcoming],
+            "rejected": [segment_json(s, *args) for s in session.rejected],
             "rejected_count": len(session.rejected_ids),
         }
         if event is not None:

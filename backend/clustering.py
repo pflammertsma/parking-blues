@@ -84,6 +84,23 @@ def rank_clusters(
     return [sorted(c, key=segment_distance) for c in ranked]
 
 
+def build_ranked_clusters(
+    segments: list[ParkingSegment],
+    origin_lat: float,
+    origin_lon: float,
+    eps_m: float = DEFAULT_CLUSTER_EPS_M,
+) -> list[list[ParkingSegment]]:
+    """Rank clusters best-first, without flattening them -- callers that
+    need to keep working through one cluster before moving to the next
+    (see ParkingSession in session.py, and the "across the tracks" note in
+    README section 4) need the grouping preserved.
+    """
+    if not segments:
+        return []
+    clusters = cluster_segments(segments, eps_m=eps_m)
+    return rank_clusters(clusters, origin_lat, origin_lon)
+
+
 def build_candidate_order(
     segments: list[ParkingSegment],
     origin_lat: float,
@@ -93,8 +110,8 @@ def build_candidate_order(
     """Flatten ranked clusters into the single visiting order a session
     works through: best cluster first, nearest segment within it first.
     """
-    if not segments:
-        return []
-    clusters = cluster_segments(segments, eps_m=eps_m)
-    ranked = rank_clusters(clusters, origin_lat, origin_lon)
-    return [seg for cluster in ranked for seg in cluster]
+    return [
+        seg
+        for cluster in build_ranked_clusters(segments, origin_lat, origin_lon, eps_m)
+        for seg in cluster
+    ]

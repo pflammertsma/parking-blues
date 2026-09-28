@@ -1,3 +1,7 @@
 flask>=3.1
 gunicorn>=23.0
 pytest>=8.0
+# zoneinfo (used for the Europe/Zurich blue-zone rules) relies on a system
+# tz database that Linux/Cloud Run has but Windows doesn't ship -- without
+# this, ZoneInfo("Europe/Zurich") raises ZoneInfoNotFoundError there.
+tzdata>=2024.1

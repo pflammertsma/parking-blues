@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 
 from .blue_zone_rules import ZURICH_TZ
-from .clustering import build_candidate_order
+from .clustering import build_ranked_clusters
 from .duration_filter import segment_supports_duration
 from .geo import haversine_m
 from .models import ParkingSegment, ZoneType
@@ -51,7 +51,21 @@ class ParkingSession:
     origin_lon: float
     zone_filter: set[ZoneType]
     radius_m: float
-    candidates: list[ParkingSegment]
+    # Ranked clusters (best cluster first, nearest-first within each),
+    # never an empty cluster -- see _reject. Kept grouped rather than
+    # flattened so retargeting can stay within the current cluster instead
+    # of jumping to whatever's literally nearest across the whole map,
+    # which could mean a barrier (rail lines, a river) the driver would
+    # actually have to go around -- see README section 4.
+    candidates: list[list[ParkingSegment]]
+    # The driver's last known position -- starts at the destination (before
+    # a session gets any live position updates, "where the driver is" and
+    # "where they're headed" are the same point) and is updated on every
+    # update_position call. Lets the client show distance from the driver,
+    # not just from the destination, which is what actually matters once
+    # you're moving -- see the segment_json "distance_from_you_m" field.
+    last_lat: float
+    last_lon: float
     # None means no preference -- every candidate query re-applies this
     # (see SessionStore._candidates_for), since whether a spot satisfies a
     # given duration is time-of-day dependent for blue zone and can change
@@ -77,18 +91,27 @@ class ParkingSession:
     def current(self) -> ParkingSegment | None:
         if self.state != SessionState.SEARCHING or not self.candidates:
             return None
-        return self.candidates[0]
+        return self.candidates[0][0]
 
     @property
     def upcoming(self) -> list[ParkingSegment]:
         """Remaining candidates after the current one, for display."""
-        return self.candidates[1:]
+        if not self.candidates:
+            return []
+        rest = list(self.candidates[0][1:])
+        for cluster in self.candidates[1:]:
+            rest.extend(cluster)
+        return rest
 
     def _reject(self, segment: ParkingSegment) -> None:
         self.rejected_ids.add(segment.id)
         self.rejected.append(segment)
         self.closest_approach_m.pop(segment.id, None)
-        self.candidates.remove(segment)
+        self.candidates = [
+            filtered
+            for cluster in self.candidates
+            if (filtered := [s for s in cluster if s.id != segment.id])
+        ]
         if not self.candidates:
             self.state = SessionState.EXHAUSTED
 
@@ -110,24 +133,27 @@ class ParkingSession:
         moving (not just once they stop), so both auto-rejection and
         retargeting react smoothly instead of needing a discrete drop.
         """
+        self.last_lat, self.last_lon = lat, lon
+
         if self.current is None:
             return "exhausted"
 
-        previous_current_id = self.candidates[0].id
+        previous_current_id = self.current.id
 
         # Update every remaining candidate's closest-approach independently,
         # then reject any the driver got within APPROACH_THRESHOLD_M of and
         # has now pulled at least DEPART_MARGIN_M farther away from -- not
         # just whichever one happens to be ranked "current" right now.
         to_reject = []
-        for seg in self.candidates:
-            distance_m = haversine_m(lat, lon, seg.lat, seg.lon)
-            closest = self.closest_approach_m.get(seg.id)
-            if closest is None or distance_m < closest:
-                closest = distance_m
-                self.closest_approach_m[seg.id] = closest
-            if closest <= APPROACH_THRESHOLD_M and distance_m >= closest + DEPART_MARGIN_M:
-                to_reject.append(seg)
+        for cluster in self.candidates:
+            for seg in cluster:
+                distance_m = haversine_m(lat, lon, seg.lat, seg.lon)
+                closest = self.closest_approach_m.get(seg.id)
+                if closest is None or distance_m < closest:
+                    closest = distance_m
+                    self.closest_approach_m[seg.id] = closest
+                if closest <= APPROACH_THRESHOLD_M and distance_m >= closest + DEPART_MARGIN_M:
+                    to_reject.append(seg)
 
         for seg in to_reject:
             self._reject(seg)
@@ -135,11 +161,17 @@ class ParkingSession:
         if self.state != SessionState.SEARCHING:
             return "exhausted"
 
-        self.candidates.sort(key=lambda s: haversine_m(lat, lon, s.lat, s.lon))
+        # Re-rank by live distance *within* the current cluster only --
+        # cluster order itself was ranked once, from the origin, and stays
+        # fixed until the current cluster is fully exhausted. Re-sorting
+        # across all remaining clusters here is exactly what would let a
+        # cluster on the other side of a barrier outrank one nearby just
+        # for being marginally closer as the crow flies.
+        self.candidates[0].sort(key=lambda s: haversine_m(lat, lon, s.lat, s.lon))
 
         if to_reject:
             return "auto_rejected"
-        if self.candidates[0].id != previous_current_id:
+        if self.current.id != previous_current_id:
             return "retargeted"
         return "tracking"
 
@@ -157,7 +189,7 @@ class SessionStore:
         self, zone_filter: set[ZoneType], radius_m: float, origin_lat: float,
         origin_lon: float, exclude_ids: set[str],
         preferred_duration_minutes: int | None, now: datetime,
-    ) -> list[ParkingSegment]:
+    ) -> list[list[ParkingSegment]]:
         in_scope = []
         for seg in self._all_segments:
             if seg.id in exclude_ids or not seg.matches(zone_filter):
@@ -172,7 +204,7 @@ class SessionStore:
 
         in_scope.sort(key=lambda pair: pair[0])
         nearest = [seg for _, seg in in_scope[:MAX_CANDIDATES_PER_QUERY]]
-        return build_candidate_order(nearest, origin_lat, origin_lon)
+        return build_ranked_clusters(nearest, origin_lat, origin_lon)
 
     def create(
         self,
@@ -195,6 +227,8 @@ class SessionStore:
             zone_filter=zone_filter,
             radius_m=radius_m,
             candidates=candidates,
+            last_lat=origin_lat,
+            last_lon=origin_lon,
             preferred_duration_minutes=preferred_duration_minutes,
             state=SessionState.SEARCHING if candidates else SessionState.EXHAUSTED,
         )
@@ -246,11 +280,49 @@ class SessionStore:
         session.confirm_current()
         return "parked"
 
+    def _pull_in_local_cluster(
+        self, session: ParkingSession, lat: float, lon: float, now: datetime
+    ) -> bool:
+        """When the driver's current cluster just ran out, the next one up
+        is whatever's next in the destination-ranked order -- which could
+        mean sending them clear across the map (or a barrier) rather than
+        widening the search right around where they actually are. Look for
+        anything new near the driver first; only fall back to the existing,
+        possibly-distant queue if nothing turns up locally. Returns True if
+        a local cluster was found and prepended.
+        """
+        known_ids = session.rejected_ids | {
+            seg.id for cluster in session.candidates for seg in cluster
+        }
+        local_clusters = self._candidates_for(
+            session.zone_filter, DEFAULT_INITIAL_RADIUS_M, lat, lon, exclude_ids=known_ids,
+            preferred_duration_minutes=session.preferred_duration_minutes, now=now,
+        )
+        if not local_clusters:
+            return False
+        local_clusters.sort(
+            key=lambda cluster: min(haversine_m(lat, lon, s.lat, s.lon) for s in cluster)
+        )
+        session.candidates = local_clusters + session.candidates
+        session.closest_approach_m = {}
+        return True
+
     def update_position(
         self, session: ParkingSession, lat: float, lon: float, now: datetime | None = None
     ) -> str:
         now = now or datetime.now(ZURICH_TZ)
+        cluster_before = (
+            {s.id for s in session.candidates[0]} if session.candidates else set()
+        )
+
         event = session.update_position(lat, lon)
+
+        if session.state == SessionState.SEARCHING:
+            cluster_after = {s.id for s in session.candidates[0]}
+            moved_to_new_cluster = cluster_before and cluster_before.isdisjoint(cluster_after)
+            if moved_to_new_cluster and self._pull_in_local_cluster(session, lat, lon, now):
+                event = "retargeted"
+
         if session.state == SessionState.EXHAUSTED:
             self._auto_expand_while_exhausted(session, now)
             if session.state == SessionState.SEARCHING:
