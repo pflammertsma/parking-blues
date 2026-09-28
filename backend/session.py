@@ -51,6 +51,11 @@ class ParkingSession:
     candidates: list[ParkingSegment]
     index: int = 0
     rejected_ids: set[str] = field(default_factory=set)
+    # Kept alongside rejected_ids (which is also used to exclude these from
+    # future candidate queries) so the client can still show where the
+    # driver already looked and found nothing -- radius expansion rebuilds
+    # `candidates` from scratch and would otherwise drop them.
+    rejected: list[ParkingSegment] = field(default_factory=list)
     closest_approach_m: float | None = None
     state: SessionState = SessionState.SEARCHING
 
@@ -65,6 +70,10 @@ class ParkingSession:
         """Remaining candidates after the current one, for display."""
         return self.candidates[self.index + 1 :]
 
+    def _reject(self, segment: ParkingSegment) -> None:
+        self.rejected_ids.add(segment.id)
+        self.rejected.append(segment)
+
     def _advance(self) -> None:
         self.index += 1
         self.closest_approach_m = None
@@ -75,7 +84,7 @@ class ParkingSession:
         current = self.current
         if current is None:
             return
-        self.rejected_ids.add(current.id)
+        self._reject(current)
         self._advance()
 
     def confirm_current(self) -> None:
@@ -116,7 +125,7 @@ class ParkingSession:
         got_close_enough = self.closest_approach_m <= APPROACH_THRESHOLD_M
         moved_away_again = distance_m >= self.closest_approach_m + DEPART_MARGIN_M
         if got_close_enough and moved_away_again:
-            self.rejected_ids.add(current.id)
+            self._reject(current)
             self._advance()
             event = "exhausted" if self.state == SessionState.EXHAUSTED else "auto_rejected"
         else:

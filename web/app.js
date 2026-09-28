@@ -81,8 +81,25 @@ function candidateMarker(segment, highlighted) {
   );
 }
 
+function rejectedMarker(segment) {
+  return L.circleMarker([segment.lat, segment.lon], {
+    radius: 6,
+    color: "#999",
+    fillColor: "#bbb",
+    fillOpacity: 0.5,
+    weight: 1,
+  }).bindPopup(
+    `<strong>${segment.address_label}</strong><br>${segment.zone_type} zone -- no space, already checked`
+  );
+}
+
 function renderMap(data) {
   candidateLayer.clearLayers();
+  // Draw already-checked spots first (and dimmed) so they sit visually
+  // behind the still-live candidates instead of competing with them.
+  for (const segment of data.rejected) {
+    rejectedMarker(segment).addTo(candidateLayer);
+  }
   if (data.current) {
     candidateMarker(data.current, true).addTo(candidateLayer);
   }
@@ -118,9 +135,7 @@ function render(data) {
   const exhausted = data.state === "exhausted";
   $("exhausted").hidden = !exhausted;
 
-  const active = data.state === "searching";
-  $("confirm").disabled = !active;
-  $("reject").disabled = !active;
+  $("confirm").disabled = data.state !== "searching";
 
   if (data.state === "parked") {
     $("current").innerHTML += "<div><strong>Parked. Session complete.</strong></div>";
@@ -215,11 +230,6 @@ $("start").addEventListener("click", async () => {
 
 $("confirm").addEventListener("click", async () => {
   const data = await api(`/api/session/${sessionId}/confirm`, { method: "POST" });
-  render(data);
-});
-
-$("reject").addEventListener("click", async () => {
-  const data = await api(`/api/session/${sessionId}/reject`, { method: "POST" });
   render(data);
 });
 

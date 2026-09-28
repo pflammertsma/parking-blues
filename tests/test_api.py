@@ -78,6 +78,7 @@ def test_full_drive_by_flow_via_the_api(client):
     assert body["event"] == "auto_rejected"
     assert body["current"]["id"] == "B"
     assert body["rejected_count"] == 1
+    assert [s["id"] for s in body["rejected"]] == ["A"]
 
 
 def test_confirm_marks_session_parked(client):

@@ -55,6 +55,20 @@ def test_manual_reject_advances_to_next_candidate():
     session.reject_current()
     assert session.current.id == "second"
     assert "first" in session.rejected_ids
+    assert [s.id for s in session.rejected] == ["first"]
+
+
+def test_rejected_segments_stay_visible_across_a_radius_expansion():
+    # The client still needs to show where the driver already looked and
+    # found nothing, even after expand_radius rebuilds `candidates` from a
+    # wider query that excludes already-rejected segments by design.
+    segments = [make_segment("near", 100), make_segment("far", 350)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
+    store.reject_current(session)
+    assert session.state == SessionState.SEARCHING
+    assert session.current.id == "far"
+    assert [s.id for s in session.rejected] == ["near"]
 
 
 def test_confirm_marks_session_parked():
