@@ -321,6 +321,28 @@ simulated drive (~2m/tick, ~120m total) along real data: 5 retargets, each
 moving sequentially to the next real spot the driver was actually passing
 closer to -- not the near-every-tick churn the bug report described.
 
+### 9.6 Driving-direction awareness
+
+Follow-up to §9.5: distance alone doesn't capture "the driver is heading
+straight for a better spot" versus "there's a closer one, but it's back
+the way they came" -- the latter would mean backtracking, and shouldn't
+win just for being nominally closer. `ParkingSession` now tracks a
+`heading_deg` (a compass bearing, recomputed from consecutive positions
+whenever they're at least `MIN_HEADING_UPDATE_DISTANCE_M` (5m) apart --
+below that, GPS/drag jitter gives too noisy a bearing to trust, so the
+previous heading is kept rather than reset).
+
+`_directional_distance` (backend/session.py) adjusts a candidate's
+distance by up to `DIRECTION_WEIGHT` (25%) based on how well it lines up
+with that heading -- straight ahead counts as closer than it actually is,
+straight behind as farther, tapering to no adjustment for something to
+the side. `_pull_in_local_cluster` compares *this* adjusted distance
+against `LOCAL_PULL_IN_MARGIN_M`, not the raw one, so a candidate the
+driver is heading toward can win a reconsideration sooner than pure
+distance would justify -- while the margin still does its §9.5 job of
+requiring a genuine improvement, not just proximity to the search window,
+so this doesn't reopen the flickering that section fixed.
+
 ## 10. Deploying the web MVP to GCP
 
 `deploy/gcloud.sh <project-id> <billing-account-id> [region]` provisions a

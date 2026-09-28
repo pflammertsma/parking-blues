@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import pytest
+
 from backend.geo import offset_point
 from backend.models import ParkingSegment, ZoneType
 from backend.session import (
@@ -9,6 +11,7 @@ from backend.session import (
     MAX_RADIUS_M,
     SessionState,
     SessionStore,
+    _directional_distance,
 )
 
 ORIGIN_LAT, ORIGIN_LON = 47.3703, 8.5386
@@ -260,6 +263,48 @@ def test_local_pull_in_ignores_a_merely_new_candidate_that_is_not_closer():
 
     assert event == "tracking"
     assert session.current.id == "far"
+
+
+def test_directional_distance_favors_ahead_and_penalizes_behind():
+    lat, lon = ORIGIN_LAT, ORIGIN_LON
+    heading_north = 0.0
+
+    ahead = offset_point(lat, lon, 100, 0)
+    behind = offset_point(lat, lon, -100, 0)
+    side = offset_point(lat, lon, 0, 100)
+
+    assert _directional_distance(lat, lon, heading_north, *ahead, 100) < 100
+    assert _directional_distance(lat, lon, heading_north, *behind, 100) > 100
+    assert _directional_distance(lat, lon, heading_north, *side, 100) == pytest.approx(100, abs=0.01)
+
+
+def test_directional_distance_is_unchanged_without_a_known_heading():
+    lat, lon = ORIGIN_LAT, ORIGIN_LON
+    target = offset_point(lat, lon, 100, 0)
+    assert _directional_distance(lat, lon, None, *target, 42) == 42
+
+
+def test_heading_lets_a_farther_ahead_candidate_win_sooner_than_raw_distance_alone():
+    # Directly addresses the ask: if the driver is heading toward a better
+    # cluster, it should be reconsidered -- but not so eagerly that it
+    # changes too frequently. "current" is roughly perpendicular to the
+    # driving heading (no direction adjustment); "local" is dead ahead and
+    # only ~5m closer in raw terms, nowhere near enough to clear
+    # LOCAL_PULL_IN_MARGIN_M on raw distance alone (verified: it wouldn't).
+    # The direction bonus for being straight ahead is what pushes it over.
+    segments = [
+        make_segment("current", 160, east_m=50),  # perpendicular to travel
+        make_segment("local", 205, east_m=0),  # dead ahead, undiscovered yet
+    ]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
+    assert session.current.id == "current"
+
+    lat, lon = drive_position(160)  # establishes heading ~= north
+    event = store.update_position(session, lat, lon)
+
+    assert event == "retargeted"
+    assert session.current.id == "local"
 
 
 def test_drifting_far_from_the_target_pulls_in_a_local_cluster_without_exhausting_it():
