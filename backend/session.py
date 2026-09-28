@@ -31,15 +31,6 @@ MAX_RADIUS_M = 2000.0
 # gets. The nearest ones are what would get suggested first anyway.
 MAX_CANDIDATES_PER_QUERY = 300
 
-# If the driver ends up farther from their current target than this, they've
-# clearly left the area it was chosen for -- e.g. drove straight past the
-# whole search region rather than working through it -- so it's worth
-# checking what's actually near them now rather than continuing to point
-# back at a target this far away, even if that target's cluster still has
-# other untried members. Same distance as a fresh local search, since
-# that's what re-anchors on the driver -- see _pull_in_local_cluster.
-LOCAL_SEARCH_TRIGGER_M = DEFAULT_INITIAL_RADIUS_M
-
 # "Reached" the spot: within this distance of the target.
 APPROACH_THRESHOLD_M = 20.0
 # "Passed without stopping": moved at least this much farther away *after*
@@ -316,30 +307,23 @@ class SessionStore:
             key=lambda cluster: min(haversine_m(lat, lon, s.lat, s.lon) for s in cluster)
         )
         session.candidates = local_clusters + session.candidates
-        session.closest_approach_m = {}
         return True
 
     def update_position(
         self, session: ParkingSession, lat: float, lon: float, now: datetime | None = None
     ) -> str:
         now = now or datetime.now(ZURICH_TZ)
-        cluster_before = (
-            {s.id for s in session.candidates[0]} if session.candidates else set()
-        )
-
         event = session.update_position(lat, lon)
 
         if session.state == SessionState.SEARCHING:
-            cluster_after = {s.id for s in session.candidates[0]}
-            moved_to_new_cluster = cluster_before and cluster_before.isdisjoint(cluster_after)
-            drifted_far_from_target = (
-                haversine_m(lat, lon, session.current.lat, session.current.lon)
-                > LOCAL_SEARCH_TRIGGER_M
-            )
-            if (
-                (moved_to_new_cluster or drifted_far_from_target)
-                and self._pull_in_local_cluster(session, lat, lon, now)
-            ):
+            # Checked every tick, not just once the driver has already
+            # drifted well past the target -- by the time a distance
+            # threshold would trip, they'd have already been driving blind
+            # for a while. _pull_in_local_cluster excludes anything already
+            # known and only changes candidates when it finds something
+            # genuinely new nearby, so calling it continuously is cheap and
+            # can't cause flip-flopping.
+            if self._pull_in_local_cluster(session, lat, lon, now):
                 event = "retargeted"
 
         if session.state == SessionState.EXHAUSTED:

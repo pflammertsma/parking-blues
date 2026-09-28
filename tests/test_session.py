@@ -207,10 +207,12 @@ def test_cluster_exhaustion_pulls_in_a_new_local_cluster_before_falling_back():
     # "near" and "far" are both known from the start (separate clusters,
     # both within the initial radius); "local" is outside that initial
     # radius, so it's undiscovered until the driver actually gets near it.
-    # Once "near" is exhausted, the driver ends up much closer to "local"
-    # than to "far" -- the store should notice and pull "local" in ahead of
-    # falling back to "far", instead of just handing over whatever was next
-    # in the original destination-ranked order (see README section 4).
+    # The local search runs every tick (not just on exhaustion -- waiting
+    # for that would mean driving blind in the meantime), so "local" gets
+    # pulled in as soon as the driver's approach puts it in range, ahead of
+    # "near" even being rejected. Once "near" *is* rejected, "far" -- next
+    # in the original destination-ranked order -- should still be sitting
+    # in reserve rather than having been discarded.
     segments = [
         make_segment("near", 100),
         make_segment("far", 100, east_m=100),
@@ -226,7 +228,8 @@ def test_cluster_exhaustion_pulls_in_a_new_local_cluster_before_falling_back():
         session, *drive_position(100 + APPROACH_THRESHOLD_M + DEPART_MARGIN_M)
     )
 
-    assert event == "retargeted"
+    assert event == "auto_rejected"
+    assert "near" in session.rejected_ids
     assert session.current.id == "local"
     assert any(c.id == "far" for c in session.upcoming)
 
@@ -320,7 +323,11 @@ def test_store_reject_current_auto_expands_instead_of_stopping():
 
 
 def test_store_update_position_auto_expands_instead_of_stopping():
-    segments = [make_segment("near", 100), make_segment("far", 350)]
+    # "far" needs to be out of reach of the per-tick local search too (not
+    # just the original radius), otherwise it'd get discovered on approach
+    # before "near" is ever rejected, and the exhaustion/expansion path
+    # this test targets would never actually run.
+    segments = [make_segment("near", 100), make_segment("far", 800)]
     store = SessionStore(segments)
     session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
 
