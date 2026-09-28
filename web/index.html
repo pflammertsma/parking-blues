@@ -8,19 +8,15 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>Parking Blues <small>MVP</small></h1>
-  <p class="hint">
-    Extremely basic reference client for the matching/clustering/rejection
-    algorithm described in the README. Fixture data only, centered on
-    the default start location, Zurich -- see <code>backend/fixtures.py</code>.
-  </p>
+  <h1>Parking Blues</h1>
 
   <div id="map"></div>
   <p class="hint">
     Drag the blue pin to set your start location. Once a search is
-    running, drag the red dot to simulate driving -- reach or pass a
-    highlighted candidate without confirming it, and it'll get
-    auto-rejected.
+    running, drag the red dot to simulate driving -- it updates live as
+    you drag. Reach or pass the highlighted candidate without confirming
+    it, and it'll get auto-rejected; drift toward a different candidate
+    and it'll become the new top pick.
   </p>
 
   <section id="setup">

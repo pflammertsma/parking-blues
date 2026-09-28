@@ -104,7 +104,9 @@ function renderMap(data) {
 }
 
 function render(data) {
-  if (data.event) {
+  // "tracking" fires on every drag tick -- logging it would drown out the
+  // events that actually matter (rejection, retargeting, expansion).
+  if (data.event && data.event !== "tracking") {
     const target = data.current ? data.current.address_label : "(none)";
     const radiusNote = data.event === "expanded" ? ` (radius now ${data.radius_m} m)` : "";
     log(`${data.event}${radiusNote} -> current target: ${target}`);
@@ -176,14 +178,36 @@ $("start").addEventListener("click", async () => {
   youMarker = L.marker([lat, lng], { draggable: true, icon: youIcon })
     .addTo(map)
     .bindTooltip("You (drag to simulate driving)", { direction: "top" });
-  youMarker.on("dragend", async () => {
-    const pos = youMarker.getLatLng();
-    const body = await api(`/api/session/${sessionId}/position`, {
-      method: "POST",
-      body: JSON.stringify({ lat: pos.lat, lon: pos.lng }),
-    });
-    render(body);
+
+  // Post position updates continuously while dragging (not just on drop) so
+  // the approach/depart auto-rejection and live retargeting behave like an
+  // actual drive-by instead of needing repeated discrete drops. Throttled
+  // by both a time interval and an in-flight guard so drag ticks don't pile
+  // up requests; dragend always sends the final position.
+  const POSITION_UPDATE_INTERVAL_MS = 200;
+  let positionRequestInFlight = false;
+  let lastPositionSentAt = 0;
+
+  async function sendPosition(pos) {
+    if (positionRequestInFlight) return;
+    positionRequestInFlight = true;
+    lastPositionSentAt = Date.now();
+    try {
+      const body = await api(`/api/session/${sessionId}/position`, {
+        method: "POST",
+        body: JSON.stringify({ lat: pos.lat, lon: pos.lng }),
+      });
+      render(body);
+    } finally {
+      positionRequestInFlight = false;
+    }
+  }
+
+  youMarker.on("drag", () => {
+    if (Date.now() - lastPositionSentAt < POSITION_UPDATE_INTERVAL_MS) return;
+    sendPosition(youMarker.getLatLng());
   });
+  youMarker.on("dragend", () => sendPosition(youMarker.getLatLng()));
 
   log(`Session started (radius ${data.radius_m} m)`);
   render(data);

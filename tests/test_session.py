@@ -112,6 +112,24 @@ def test_driving_past_a_spot_without_stopping_triggers_auto_rejection():
     assert session.current.id == "B"
 
 
+def test_top_suggestion_switches_to_a_closer_candidate_as_driver_approaches_it():
+    # "A" starts closest to the search origin (so it's the initial pick),
+    # but the driver heads straight for "B" instead without ever getting
+    # near "A" -- the top suggestion should follow, not stay stuck on "A".
+    segments = [make_segment("A", 100), make_segment("B", 50, east_m=300)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000)
+    assert session.current.id == "A"
+
+    lat, lon = offset_point(ORIGIN_LAT, ORIGIN_LON, 50, 300)
+    event = session.update_position(lat, lon)
+
+    assert event == "retargeted"
+    assert session.current.id == "B"
+    assert "A" not in session.rejected_ids
+    assert any(c.id == "A" for c in session.upcoming)
+
+
 def test_auto_rejecting_the_last_candidate_reports_exhausted():
     segments = [make_segment("only", 100)]
     store = SessionStore(segments)

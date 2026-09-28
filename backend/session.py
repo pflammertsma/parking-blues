@@ -75,10 +75,28 @@ class ParkingSession:
         if self.current is not None:
             self.state = SessionState.PARKED
 
+    def _retarget_by_distance(self, lat: float, lon: float) -> bool:
+        """Re-sort the not-yet-visited candidates by live distance from the
+        driver, nearest first, so a suggestion that's drifting farther away
+        stops being the top pick instead of staying "current" just because
+        it was closest back at the search origin. Returns True if the top
+        suggestion actually changed.
+        """
+        remaining = self.candidates[self.index :]
+        remaining.sort(key=lambda s: haversine_m(lat, lon, s.lat, s.lon))
+        changed = remaining[0].id != self.candidates[self.index].id
+        self.candidates[self.index :] = remaining
+        if changed:
+            self.closest_approach_m = None
+        return changed
+
     def update_position(self, lat: float, lon: float) -> str:
         """Feed a live position update. Returns one of:
-        "tracking", "auto_rejected", "exhausted" -- see README section 4,
-        steps 4-5, for the reasoning behind the approach/depart thresholds.
+        "tracking", "retargeted", "auto_rejected", "exhausted" -- see
+        README section 4, steps 4-5, for the reasoning behind the
+        approach/depart thresholds. Called continuously while the driver is
+        moving (not just once they stop), so both auto-rejection and
+        retargeting react smoothly instead of needing a discrete drop.
         """
         current = self.current
         if current is None:
@@ -93,9 +111,15 @@ class ParkingSession:
         if got_close_enough and moved_away_again:
             self.rejected_ids.add(current.id)
             self._advance()
-            return "exhausted" if self.state == SessionState.EXHAUSTED else "auto_rejected"
+            event = "exhausted" if self.state == SessionState.EXHAUSTED else "auto_rejected"
+        else:
+            event = "tracking"
 
-        return "tracking"
+        if self.state == SessionState.SEARCHING and self._retarget_by_distance(lat, lon):
+            if event == "tracking":
+                event = "retargeted"
+
+        return event
 
 
 class SessionStore:
