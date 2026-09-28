@@ -8,11 +8,12 @@ from backend.session import APPROACH_THRESHOLD_M, DEPART_MARGIN_M, SessionStore
 ORIGIN_LAT, ORIGIN_LON = 47.3703, 8.5386
 
 
-def make_segment(id_, north_m, east_m=0, zone_type=ZoneType.BLUE):
+def make_segment(id_, north_m, east_m=0, zone_type=ZoneType.BLUE, max_duration_minutes=None):
     lat, lon = offset_point(ORIGIN_LAT, ORIGIN_LON, north_m, east_m)
     return ParkingSegment(
         id=id_, lat=lat, lon=lon, zone_type=zone_type,
         address_label=id_, estimated_capacity=1,
+        max_duration_minutes=max_duration_minutes,
     )
 
 
@@ -99,6 +100,42 @@ def test_blue_zone_segments_carry_a_legal_until_field_white_zone_does_not(client
     white = created["upcoming"][0]
     assert white["id"] == "white-spot"
     assert "legal_until" not in white
+
+
+def test_duration_minutes_must_be_a_positive_integer(client):
+    response = client.post(
+        "/api/session",
+        json={"lat": ORIGIN_LAT, "lon": ORIGIN_LON, "zone": "both", "duration_minutes": 0},
+    )
+    assert response.status_code == 400
+
+    response = client.post(
+        "/api/session",
+        json={"lat": ORIGIN_LAT, "lon": ORIGIN_LON, "zone": "both", "duration_minutes": "soon"},
+    )
+    assert response.status_code == 400
+
+
+def test_duration_minutes_filters_out_spots_that_are_too_short(client):
+    segments = [
+        make_segment("too-short", 50, zone_type=ZoneType.WHITE, max_duration_minutes=30),
+        make_segment("long-enough", 60, zone_type=ZoneType.WHITE, max_duration_minutes=120),
+    ]
+    app = create_app(store=SessionStore(segments))
+    app.config.update(TESTING=True)
+    local_client = app.test_client()
+
+    response = local_client.post(
+        "/api/session",
+        json={
+            "lat": ORIGIN_LAT, "lon": ORIGIN_LON, "zone": "white", "duration_minutes": 60,
+        },
+    )
+    body = response.get_json()
+    assert response.status_code == 201
+    assert body["preferred_duration_minutes"] == 60
+    assert body["current"]["id"] == "long-enough"
+    assert all(s["id"] != "too-short" for s in body["upcoming"])
 
 
 def test_confirm_marks_session_parked(client):

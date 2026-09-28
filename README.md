@@ -221,6 +221,32 @@ Saturday night, still parked when Monday's restricted hours resume) --
 this answers "what's the deadline for a single arrival right now", not
 "is this car currently legal given how long it's actually been there".
 
+### 9.2 Preferred parking duration
+
+The web UI lets the user say how long they need to park (a `duration_minutes`
+field on `POST /api/session`, stored on the session as
+`preferred_duration_minutes` and echoed back so the UI can show what's
+active), and candidate matching then excludes any spot that can't
+accommodate that long *right now* -- this is why it has to factor in the
+current time and day, not just compare against a spot's flat duration
+number: a blue-zone spot capped at "60 minutes" might genuinely fit a
+2-hour request if checked during the free lunch hour, overnight, or (not
+modeled per-street, but the general rule) on a Sunday, when it's
+unrestricted rather than actually limited to 60 minutes.
+
+`backend/duration_filter.py`'s `segment_supports_duration(segment,
+requested_minutes, now)` is the single predicate this runs through: blue
+zone delegates to `blue_zone_deadline` and compares the remaining time
+against what's requested (unrestricted = always satisfies); white zone
+just compares against the flat per-spot cap, since no time-of-day rule is
+modeled for it (a missing cap is treated as "no recorded limit", i.e. it
+satisfies anything). `SessionStore._candidates_for` applies this
+alongside the existing zone/radius filters, and re-applies it on every
+radius expansion with a fresh `now` -- a spot that doesn't fit can start
+fitting (or stop fitting) as real time passes during a session, e.g. a
+blue-zone spot crossing into the lunch-hour or overnight window while the
+driver is still searching.
+
 ## 10. Deploying the web MVP to GCP
 
 `deploy/gcloud.sh <project-id> <billing-account-id> [region]` provisions a

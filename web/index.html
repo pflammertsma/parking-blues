@@ -44,6 +44,25 @@
       <label><input type="radio" name="zone" value="both" checked /> Both</label>
     </fieldset>
 
+    <label class="duration-row">
+      How long do you need to park?
+      <select id="duration">
+        <option value="">No preference</option>
+        <option value="30">30 minutes</option>
+        <option value="60">1 hour</option>
+        <option value="90">1.5 hours</option>
+        <option value="120">2 hours</option>
+        <option value="240">4 hours</option>
+        <option value="480">8 hours</option>
+      </select>
+    </label>
+    <p class="hint">
+      Factors in the current time -- e.g. a blue-zone spot may show as
+      fitting a 2-hour stay right now because it's within the free lunch
+      hour or overnight, even though its normal cap is 60 minutes. See
+      README section 9.2.
+    </p>
+
     <div class="position-row">
       <span id="origin-readout">Destination: 47.37920, 8.53131</span>
       <button id="use-geolocation">Use my location</button>
@@ -54,6 +73,7 @@
 
   <section id="session" hidden>
     <h2>2. Current target</h2>
+    <p id="duration-readout" class="hint"></p>
     <div id="current" class="card"></div>
 
     <div id="exhausted" hidden>

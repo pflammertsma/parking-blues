@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from backend.geo import offset_point
 from backend.models import ParkingSegment, ZoneType
 from backend.session import (
@@ -12,11 +14,12 @@ from backend.session import (
 ORIGIN_LAT, ORIGIN_LON = 47.3703, 8.5386
 
 
-def make_segment(id_, north_m, east_m=0, zone_type=ZoneType.BLUE):
+def make_segment(id_, north_m, east_m=0, zone_type=ZoneType.BLUE, max_duration_minutes=None):
     lat, lon = offset_point(ORIGIN_LAT, ORIGIN_LON, north_m, east_m)
     return ParkingSegment(
         id=id_, lat=lat, lon=lon, zone_type=zone_type,
         address_label=id_, estimated_capacity=1,
+        max_duration_minutes=max_duration_minutes,
     )
 
 
@@ -268,3 +271,57 @@ def test_candidate_count_is_capped_in_dense_areas():
     assert len(session.candidates) == MAX_CANDIDATES_PER_QUERY
     # And it's still the *nearest* ones that get kept, not an arbitrary subset.
     assert session.current.id == "s0"
+
+
+# A Monday morning where a blue-zone arrival right now has exactly 90
+# minutes available (next disc mark 09:30, +60 min = 10:30). See
+# tests/test_duration_filter.py for the rule this exercises.
+WEEKDAY_MORNING = datetime(2026, 9, 28, 9, 0)
+
+
+def test_preferred_duration_excludes_white_zone_spots_that_are_too_short():
+    segments = [
+        make_segment("too-short", 50, zone_type=ZoneType.WHITE, max_duration_minutes=30),
+        make_segment("long-enough", 60, zone_type=ZoneType.WHITE, max_duration_minutes=120),
+    ]
+    store = SessionStore(segments)
+    session = store.create(
+        ORIGIN_LAT, ORIGIN_LON, {ZoneType.WHITE}, radius_m=1000,
+        preferred_duration_minutes=60, now=WEEKDAY_MORNING,
+    )
+    assert [c.id for c in session.candidates] == ["long-enough"]
+
+
+def test_preferred_duration_respects_blue_zone_time_of_day():
+    segments = [make_segment("blue-spot", 50, zone_type=ZoneType.BLUE)]
+    store = SessionStore(segments)
+
+    fits = store.create(
+        ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000,
+        preferred_duration_minutes=90, now=WEEKDAY_MORNING,
+    )
+    assert fits.state == SessionState.SEARCHING
+
+    too_long = store.create(
+        ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000,
+        preferred_duration_minutes=91, now=WEEKDAY_MORNING,
+    )
+    assert too_long.state == SessionState.EXHAUSTED
+
+
+def test_auto_expansion_keeps_reapplying_the_duration_filter():
+    segments = [
+        make_segment("near-too-short", 50, zone_type=ZoneType.WHITE, max_duration_minutes=30),
+        make_segment("far-long-enough", 350, zone_type=ZoneType.WHITE, max_duration_minutes=120),
+    ]
+    store = SessionStore(segments)
+    # Starting radius (200) only reaches "near-too-short", which the
+    # duration filter rejects -- this forces auto-expansion (see
+    # SessionStore._auto_expand_while_exhausted), which must keep applying
+    # the same filter rather than only filtering on the first attempt.
+    session = store.create(
+        ORIGIN_LAT, ORIGIN_LON, {ZoneType.WHITE}, radius_m=200,
+        preferred_duration_minutes=60, now=WEEKDAY_MORNING,
+    )
+    assert session.state == SessionState.SEARCHING
+    assert [c.id for c in session.candidates] == ["far-long-enough"]

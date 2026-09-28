@@ -132,6 +132,21 @@ fieldset {
   width: 9rem;
 }
 
+.duration-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.duration-row select {
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
 #map {
   height: 350px;
   margin-bottom: 0.5rem;
