@@ -55,6 +55,20 @@ def test_manual_reject_advances_to_next_candidate():
     session.reject_current()
     assert session.current.id == "second"
     assert "first" in session.rejected_ids
+    assert [s.id for s in session.rejected] == ["first"]
+
+
+def test_rejected_segments_stay_visible_across_a_radius_expansion():
+    # The client still needs to show where the driver already looked and
+    # found nothing, even after expand_radius rebuilds `candidates` from a
+    # wider query that excludes already-rejected segments by design.
+    segments = [make_segment("near", 100), make_segment("far", 350)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
+    store.reject_current(session)
+    assert session.state == SessionState.SEARCHING
+    assert session.current.id == "far"
+    assert [s.id for s in session.rejected] == ["near"]
 
 
 def test_confirm_marks_session_parked():
@@ -101,8 +115,7 @@ def test_driving_past_a_spot_without_stopping_triggers_auto_rejection():
     # Within the approach threshold.
     event = session.update_position(*drive_position(100 - (APPROACH_THRESHOLD_M - 1)))
     assert event == "tracking"
-    assert session.closest_approach_m is not None
-    assert session.closest_approach_m <= APPROACH_THRESHOLD_M
+    assert session.closest_approach_m["A"] <= APPROACH_THRESHOLD_M
 
     # Drove past it by more than the depart margin without stopping.
     event = session.update_position(
@@ -111,6 +124,42 @@ def test_driving_past_a_spot_without_stopping_triggers_auto_rejection():
     assert event == "auto_rejected"
     assert "A" in session.rejected_ids
     assert session.current.id == "B"
+
+
+def test_top_suggestion_switches_to_a_closer_candidate_as_driver_approaches_it():
+    # "A" starts closest to the search origin (so it's the initial pick),
+    # but the driver heads straight for "B" instead without ever getting
+    # near "A" -- the top suggestion should follow, not stay stuck on "A".
+    segments = [make_segment("A", 100), make_segment("B", 50, east_m=300)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000)
+    assert session.current.id == "A"
+
+    lat, lon = offset_point(ORIGIN_LAT, ORIGIN_LON, 50, 300)
+    event = session.update_position(lat, lon)
+
+    assert event == "retargeted"
+    assert session.current.id == "B"
+    assert "A" not in session.rejected_ids
+    assert any(c.id == "A" for c in session.upcoming)
+
+
+def test_driving_past_a_dense_row_of_spots_rejects_each_one():
+    # Real Zurich data packs many segments just a few meters apart along a
+    # single street. Regression test for a bug where "current" reshuffled
+    # to whichever neighbor was nearest on every tick, resetting the
+    # approach tracking before any single spot's approach/depart cycle
+    # could ever complete -- so driving straight down a dense row rejected
+    # nothing at all.
+    segments = [make_segment(f"s{i}", 10 + i * 5) for i in range(5)]  # 10, 15, 20, 25, 30
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000)
+
+    for north_m in range(0, 61, 3):
+        session.update_position(*drive_position(north_m))
+
+    assert session.rejected_ids == {f"s{i}" for i in range(5)}
+    assert session.state == SessionState.EXHAUSTED
 
 
 def test_auto_rejecting_the_last_candidate_reports_exhausted():

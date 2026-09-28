@@ -78,6 +78,7 @@ def test_full_drive_by_flow_via_the_api(client):
     assert body["event"] == "auto_rejected"
     assert body["current"]["id"] == "B"
     assert body["rejected_count"] == 1
+    assert [s["id"] for s in body["rejected"]] == ["A"]
 
 
 def test_blue_zone_segments_carry_a_legal_until_field_white_zone_does_not(client):

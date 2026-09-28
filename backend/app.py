@@ -68,6 +68,10 @@ def create_app(store: SessionStore | None = None) -> Flask:
                 segment_json(s, session.origin_lat, session.origin_lon)
                 for s in session.upcoming
             ],
+            "rejected": [
+                segment_json(s, session.origin_lat, session.origin_lon)
+                for s in session.rejected
+            ],
             "rejected_count": len(session.rejected_ids),
         }
         if event is not None:
