@@ -363,3 +363,50 @@ keeps sessions in an in-memory dict scoped to one process; Cloud Run
 scaling out to multiple instances would silently drop sessions created on
 a different one. That's fine for a low-traffic MVP demo, not for real
 concurrent load -- see the "known MVP limitations" note in section 9.
+
+## 11. Serving the frontend from lammertsma.dev + API on a subdomain
+
+The MVP is also reachable at `lammertsma.dev/projects/parking-blues`, with
+the API on its own subdomain, `api.parking-blues.lammertsma.dev`. Two
+separate origins, not one proxied through the other -- `web/`'s frontend
+assets (`index.html`, `app.js`, `style.css`) are static files, so there's
+no need for Firebase Hosting to proxy anything through Cloud Run (which
+would additionally have required the Cloud Run service and the Firebase
+Hosting site to live in the same GCP project, which they don't --
+`parking-blues-mvp` per section 10, vs. `lammertsma-dev`).
+
+**Frontend** -- plain static hosting, in a *different* repo
+(`pflammertsma/lammertsma-dev`, the personal site), copied under
+`public/projects/parking-blues/` following the same pattern as that repo's
+other projects (e.g. `switch-plates/`). It's a manual copy, not a build
+step or a git submodule: whenever `web/` changes here, re-copy
+`index.html`/`app.js`/`style.css` into that repo and `firebase deploy`.
+
+**API** -- `web/app.js`'s `API_BASE` constant detects when it's being
+served from a `lammertsma.dev` hostname and points `fetch()` calls at
+`https://api.parking-blues.lammertsma.dev` instead of a same-origin path;
+everywhere else (this app's own Cloud Run URL, `python -m backend.app`
+locally) it stays same-origin as before. Since the two are now different
+origins, `backend/app.py` sends CORS headers (`Access-Control-Allow-Origin`
+etc., via a small `after_request` hook -- no new dependency) for an
+allow-list of origins (`ALLOWED_ORIGINS`) rather than `*`, since a public
+`*` would let any third-party site create/drive sessions against this API
+using a visitor's own IP/browser as the requester.
+
+Two one-time steps outside this repo, requiring credentials this session
+doesn't have, so they need to be run by hand:
+
+1. **Cloud Run domain mapping** (in the `parking-blues-mvp` project):
+   `gcloud run domain-mappings create --service parking-blues --domain
+   api.parking-blues.lammertsma.dev --region europe-west6`. If
+   `lammertsma.dev` hasn't already been verified as owned in *that* GCP
+   project, `gcloud` will point you to Search Console's domain
+   verification first -- domain mappings are gated per-project, so
+   verifying it once for `lammertsma-dev` (Firebase's project) doesn't
+   carry over.
+2. **DNS** (Cloudflare, where `lammertsma.dev`'s DNS is managed): add the
+   CNAME record the domain-mappings command prints (typically
+   `ghs.googlehosted.com`) for `api.parking-blues.lammertsma.dev`, set to
+   **DNS only** (grey cloud, not proxied) -- Cloudflare's proxy interferes
+   with Google's automatic managed-certificate issuance/renewal for the
+   mapping.
