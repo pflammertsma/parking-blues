@@ -135,12 +135,6 @@ function render(data) {
   const exhausted = data.state === "exhausted";
   $("exhausted").hidden = !exhausted;
 
-  $("confirm").disabled = data.state !== "searching";
-
-  if (data.state === "parked") {
-    $("current").innerHTML += "<div><strong>Parked. Session complete.</strong></div>";
-  }
-
   const list = $("upcoming");
   list.innerHTML = "";
   for (const segment of data.upcoming) {
@@ -228,12 +222,50 @@ $("start").addEventListener("click", async () => {
   render(data);
 });
 
-$("confirm").addEventListener("click", async () => {
-  const data = await api(`/api/session/${sessionId}/confirm`, { method: "POST" });
-  render(data);
-});
-
 $("expand").addEventListener("click", async () => {
   const data = await api(`/api/session/${sessionId}/expand`, { method: "POST" });
   render(data);
 });
+
+$("reset").addEventListener("click", () => {
+  sessionId = null;
+  if (youMarker) {
+    map.removeLayer(youMarker);
+    youMarker = null;
+  }
+  candidateLayer.clearLayers();
+  if (radiusCircle) {
+    map.removeLayer(radiusCircle);
+    radiusCircle = null;
+  }
+  originMarker.dragging.enable();
+  $("log").innerHTML = "";
+  $("exhausted").hidden = true;
+  $("session").hidden = true;
+  $("setup").hidden = false;
+});
+
+// Theme: "light" / "dark" force a choice regardless of OS setting; "system"
+// (the default) defers to prefers-color-scheme, handled in style.css.
+const THEME_STORAGE_KEY = "parking-blues-theme";
+const themeButtons = document.querySelectorAll("#theme-toggle button");
+
+function applyTheme(theme) {
+  if (theme === "system") {
+    document.documentElement.removeAttribute("data-theme");
+  } else {
+    document.documentElement.setAttribute("data-theme", theme);
+  }
+  for (const btn of themeButtons) {
+    btn.setAttribute("aria-pressed", String(btn.dataset.theme === theme));
+  }
+}
+
+for (const btn of themeButtons) {
+  btn.addEventListener("click", () => {
+    localStorage.setItem(THEME_STORAGE_KEY, btn.dataset.theme);
+    applyTheme(btn.dataset.theme);
+  });
+}
+
+applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "system");

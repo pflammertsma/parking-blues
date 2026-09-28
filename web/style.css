@@ -1,24 +1,122 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted-fg: #555555;
+  --border: #cccccc;
+  --card-bg: transparent;
+  --log-bg: #f5f5f5;
+  --accent-bg: #e6e6e6;
+  --zone-blue: #1560bd;
+  --zone-white: #555555;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16181c;
+    --fg: #eaeaea;
+    --muted-fg: #a3a3a3;
+    --border: #3a3d42;
+    --card-bg: #1e2126;
+    --log-bg: #1e2126;
+    --accent-bg: #2a2d33;
+    --zone-blue: #5b9bff;
+    --zone-white: #c8c8c8;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #16181c;
+  --fg: #eaeaea;
+  --muted-fg: #a3a3a3;
+  --border: #3a3d42;
+  --card-bg: #1e2126;
+  --log-bg: #1e2126;
+  --accent-bg: #2a2d33;
+  --zone-blue: #5b9bff;
+  --zone-white: #c8c8c8;
+}
+
 body {
   font-family: system-ui, sans-serif;
   max-width: 640px;
-  margin: 2rem auto;
+  margin: 0 auto 2rem;
   padding: 0 1rem;
-  color: #1a1a1a;
+  color: var(--fg);
+  background: var(--bg);
 }
 
-h1 small {
-  font-weight: normal;
-  color: #666;
-  font-size: 0.9rem;
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.topbar h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.theme-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.theme-toggle button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted-fg);
+}
+
+.theme-toggle button:first-child {
+  border-left: none;
+}
+
+.theme-toggle button[aria-pressed="true"] {
+  background: var(--accent-bg);
+  color: var(--fg);
+}
+
+.theme-toggle svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.reset-btn {
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
 }
 
 .hint {
-  color: #555;
+  color: var(--muted-fg);
   font-size: 0.9rem;
 }
 
 fieldset {
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   margin-bottom: 0.75rem;
 }
 
@@ -37,7 +135,7 @@ fieldset {
 #map {
   height: 350px;
   margin-bottom: 0.5rem;
-  border: 1px solid #999;
+  border: 1px solid var(--border);
   border-radius: 6px;
 }
 
@@ -53,29 +151,33 @@ fieldset {
 button {
   cursor: pointer;
   padding: 0.4rem 0.8rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .card {
-  border: 1px solid #999;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.75rem 1rem;
   margin-bottom: 0.75rem;
 }
 
-.card .zone-blue { color: #1560bd; font-weight: bold; }
-.card .zone-white { color: #555; font-weight: bold; }
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
+.card .zone-blue { color: var(--zone-blue); font-weight: bold; }
+.card .zone-white { color: var(--zone-white); font-weight: bold; }
 
 #log {
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
   max-height: 10rem;
   overflow-y: auto;
-  background: #f5f5f5;
+  background: var(--log-bg);
   padding: 0.5rem 1.5rem;
 }
