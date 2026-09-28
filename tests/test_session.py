@@ -24,6 +24,12 @@ def drive_position(north_m):
     return offset_point(ORIGIN_LAT, ORIGIN_LON, north_m, 0)
 
 
+def candidate_ids(session):
+    """Flatten session.candidates (ranked clusters of segments) into ids,
+    in visiting order, for tests that don't care about cluster grouping."""
+    return [s.id for cluster in session.candidates for s in cluster]
+
+
 def test_create_session_orders_nearest_candidate_first():
     segments = [make_segment("far", 500), make_segment("near", 100)]
     store = SessionStore(segments)
@@ -38,14 +44,14 @@ def test_zone_filter_excludes_non_matching_segments():
     store = SessionStore(segments)
     session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000)
     assert session.current.id == "blue-spot"
-    assert all(c.id != "white-spot" for c in session.candidates)
+    assert "white-spot" not in candidate_ids(session)
 
 
 def test_radius_excludes_far_segments():
     segments = [make_segment("in-range", 50), make_segment("out-of-range", 5000)]
     store = SessionStore(segments)
     session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
-    assert [c.id for c in session.candidates] == ["in-range"]
+    assert candidate_ids(session) == ["in-range"]
 
 
 def test_manual_reject_advances_to_next_candidate():
@@ -126,10 +132,32 @@ def test_driving_past_a_spot_without_stopping_triggers_auto_rejection():
     assert session.current.id == "B"
 
 
-def test_top_suggestion_switches_to_a_closer_candidate_as_driver_approaches_it():
-    # "A" starts closest to the search origin (so it's the initial pick),
-    # but the driver heads straight for "B" instead without ever getting
-    # near "A" -- the top suggestion should follow, not stay stuck on "A".
+def test_top_suggestion_switches_to_a_closer_candidate_in_the_same_cluster():
+    # "P" and "Q" are 60m apart (within the clustering eps) so they're one
+    # cluster; "P" starts closest to the origin (so it's the initial pick),
+    # but the driver heads for "Q" instead without ever getting near "P" --
+    # the top suggestion should follow within the shared cluster.
+    segments = [make_segment("P", 100), make_segment("Q", 100, east_m=60)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000)
+    assert session.current.id == "P"
+
+    lat, lon = offset_point(ORIGIN_LAT, ORIGIN_LON, 100, 60)
+    event = session.update_position(lat, lon)
+
+    assert event == "retargeted"
+    assert session.current.id == "Q"
+    assert "P" not in session.rejected_ids
+    assert any(c.id == "P" for c in session.upcoming)
+
+
+def test_top_suggestion_does_not_jump_to_a_different_distant_cluster():
+    # "A" and "B" are 304m apart -- well past the clustering eps, so they
+    # land in separate clusters. The driver heads straight for "B" without
+    # ever approaching "A", but since "B" is a whole separate cluster (the
+    # "across the tracks" case from the README), the top suggestion should
+    # stay on "A"'s cluster until it's actually exhausted, not jump just
+    # because "B" is momentarily closer as the crow flies.
     segments = [make_segment("A", 100), make_segment("B", 50, east_m=300)]
     store = SessionStore(segments)
     session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000)
@@ -138,10 +166,9 @@ def test_top_suggestion_switches_to_a_closer_candidate_as_driver_approaches_it()
     lat, lon = offset_point(ORIGIN_LAT, ORIGIN_LON, 50, 300)
     event = session.update_position(lat, lon)
 
-    assert event == "retargeted"
-    assert session.current.id == "B"
-    assert "A" not in session.rejected_ids
-    assert any(c.id == "A" for c in session.upcoming)
+    assert event == "tracking"
+    assert session.current.id == "A"
+    assert any(c.id == "B" for c in session.upcoming)
 
 
 def test_driving_past_a_dense_row_of_spots_rejects_each_one():
@@ -188,7 +215,7 @@ def test_expand_radius_reveals_previously_out_of_range_segments_and_keeps_reject
     segments = [make_segment("near", 100), make_segment("far", 350)]
     store = SessionStore(segments)
     session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
-    assert [c.id for c in session.candidates] == ["near"]
+    assert candidate_ids(session) == ["near"]
 
     session.reject_current()
     assert session.state == SessionState.EXHAUSTED
@@ -196,7 +223,7 @@ def test_expand_radius_reveals_previously_out_of_range_segments_and_keeps_reject
     store.expand_radius(session)
     assert session.radius_m == 400  # 200 + the 200m expansion step
     assert session.state == SessionState.SEARCHING
-    assert [c.id for c in session.candidates] == ["far"]
+    assert candidate_ids(session) == ["far"]
 
 
 # The store-level wrappers below are what the API actually calls (see
@@ -265,6 +292,6 @@ def test_candidate_count_is_capped_in_dense_areas():
     segments = [make_segment(f"s{i}", 10 + i) for i in range(MAX_CANDIDATES_PER_QUERY + 50)]
     store = SessionStore(segments)
     session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=10_000)
-    assert len(session.candidates) == MAX_CANDIDATES_PER_QUERY
+    assert len(candidate_ids(session)) == MAX_CANDIDATES_PER_QUERY
     # And it's still the *nearest* ones that get kept, not an arbitrary subset.
     assert session.current.id == "s0"

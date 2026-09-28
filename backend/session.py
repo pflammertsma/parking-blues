@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .clustering import build_candidate_order
+from .clustering import build_ranked_clusters
 from .geo import haversine_m
 from .models import ParkingSegment, ZoneType
 
@@ -48,7 +48,13 @@ class ParkingSession:
     origin_lon: float
     zone_filter: set[ZoneType]
     radius_m: float
-    candidates: list[ParkingSegment]
+    # Ranked clusters (best cluster first, nearest-first within each),
+    # never an empty cluster -- see _reject. Kept grouped rather than
+    # flattened so retargeting can stay within the current cluster instead
+    # of jumping to whatever's literally nearest across the whole map,
+    # which could mean a barrier (rail lines, a river) the driver would
+    # actually have to go around -- see README section 4.
+    candidates: list[list[ParkingSegment]]
     rejected_ids: set[str] = field(default_factory=set)
     # Kept alongside rejected_ids (which is also used to exclude these from
     # future candidate queries) so the client can still show where the
@@ -69,18 +75,27 @@ class ParkingSession:
     def current(self) -> ParkingSegment | None:
         if self.state != SessionState.SEARCHING or not self.candidates:
             return None
-        return self.candidates[0]
+        return self.candidates[0][0]
 
     @property
     def upcoming(self) -> list[ParkingSegment]:
         """Remaining candidates after the current one, for display."""
-        return self.candidates[1:]
+        if not self.candidates:
+            return []
+        rest = list(self.candidates[0][1:])
+        for cluster in self.candidates[1:]:
+            rest.extend(cluster)
+        return rest
 
     def _reject(self, segment: ParkingSegment) -> None:
         self.rejected_ids.add(segment.id)
         self.rejected.append(segment)
         self.closest_approach_m.pop(segment.id, None)
-        self.candidates.remove(segment)
+        self.candidates = [
+            filtered
+            for cluster in self.candidates
+            if (filtered := [s for s in cluster if s.id != segment.id])
+        ]
         if not self.candidates:
             self.state = SessionState.EXHAUSTED
 
@@ -105,21 +120,22 @@ class ParkingSession:
         if self.current is None:
             return "exhausted"
 
-        previous_current_id = self.candidates[0].id
+        previous_current_id = self.current.id
 
         # Update every remaining candidate's closest-approach independently,
         # then reject any the driver got within APPROACH_THRESHOLD_M of and
         # has now pulled at least DEPART_MARGIN_M farther away from -- not
         # just whichever one happens to be ranked "current" right now.
         to_reject = []
-        for seg in self.candidates:
-            distance_m = haversine_m(lat, lon, seg.lat, seg.lon)
-            closest = self.closest_approach_m.get(seg.id)
-            if closest is None or distance_m < closest:
-                closest = distance_m
-                self.closest_approach_m[seg.id] = closest
-            if closest <= APPROACH_THRESHOLD_M and distance_m >= closest + DEPART_MARGIN_M:
-                to_reject.append(seg)
+        for cluster in self.candidates:
+            for seg in cluster:
+                distance_m = haversine_m(lat, lon, seg.lat, seg.lon)
+                closest = self.closest_approach_m.get(seg.id)
+                if closest is None or distance_m < closest:
+                    closest = distance_m
+                    self.closest_approach_m[seg.id] = closest
+                if closest <= APPROACH_THRESHOLD_M and distance_m >= closest + DEPART_MARGIN_M:
+                    to_reject.append(seg)
 
         for seg in to_reject:
             self._reject(seg)
@@ -127,11 +143,17 @@ class ParkingSession:
         if self.state != SessionState.SEARCHING:
             return "exhausted"
 
-        self.candidates.sort(key=lambda s: haversine_m(lat, lon, s.lat, s.lon))
+        # Re-rank by live distance *within* the current cluster only --
+        # cluster order itself was ranked once, from the origin, and stays
+        # fixed until the current cluster is fully exhausted. Re-sorting
+        # across all remaining clusters here is exactly what would let a
+        # cluster on the other side of a barrier outrank one nearby just
+        # for being marginally closer as the crow flies.
+        self.candidates[0].sort(key=lambda s: haversine_m(lat, lon, s.lat, s.lon))
 
         if to_reject:
             return "auto_rejected"
-        if self.candidates[0].id != previous_current_id:
+        if self.current.id != previous_current_id:
             return "retargeted"
         return "tracking"
 
@@ -148,7 +170,7 @@ class SessionStore:
     def _candidates_for(
         self, zone_filter: set[ZoneType], radius_m: float, origin_lat: float,
         origin_lon: float, exclude_ids: set[str],
-    ) -> list[ParkingSegment]:
+    ) -> list[list[ParkingSegment]]:
         in_scope = []
         for seg in self._all_segments:
             if seg.id in exclude_ids or not seg.matches(zone_filter):
@@ -159,7 +181,7 @@ class SessionStore:
 
         in_scope.sort(key=lambda pair: pair[0])
         nearest = [seg for _, seg in in_scope[:MAX_CANDIDATES_PER_QUERY]]
-        return build_candidate_order(nearest, origin_lat, origin_lon)
+        return build_ranked_clusters(nearest, origin_lat, origin_lon)
 
     def create(
         self,
