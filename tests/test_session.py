@@ -3,6 +3,7 @@ from backend.models import ParkingSegment, ZoneType
 from backend.session import (
     APPROACH_THRESHOLD_M,
     DEPART_MARGIN_M,
+    MAX_CANDIDATES_PER_QUERY,
     MAX_RADIUS_M,
     SessionState,
     SessionStore,
@@ -223,3 +224,16 @@ def test_auto_expand_gives_up_at_max_radius_for_a_genuinely_empty_area():
     session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=200)
     assert session.state == SessionState.EXHAUSTED
     assert session.radius_m >= MAX_RADIUS_M
+
+
+def test_candidate_count_is_capped_in_dense_areas():
+    # Real Zurich data can put thousands of segments within one radius;
+    # clustering is O(n^2), so _candidates_for must bound how many it
+    # passes in regardless of how many actually match (see MAX_CANDIDATES_
+    # PER_QUERY in backend/session.py).
+    segments = [make_segment(f"s{i}", 10 + i) for i in range(MAX_CANDIDATES_PER_QUERY + 50)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=10_000)
+    assert len(session.candidates) == MAX_CANDIDATES_PER_QUERY
+    # And it's still the *nearest* ones that get kept, not an arbitrary subset.
+    assert session.current.id == "s0"

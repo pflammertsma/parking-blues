@@ -6,7 +6,7 @@ import os
 
 from flask import Flask, jsonify, request
 
-from .fixtures import ALL_SEGMENTS
+from .parking_data import ALL_SEGMENTS
 from .geo import haversine_m
 from .models import ParkingSegment, ZoneType
 from .session import ParkingSession, SessionStore

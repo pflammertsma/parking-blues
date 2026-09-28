@@ -152,16 +152,22 @@ web app instead of a native mobile client, to validate the logic before
 investing in Android/iOS/Auto/CarPlay:
 
 - `backend/` — Flask JSON API + the algorithm itself (`geo.py`,
-  `clustering.py`, `session.py`), backed by hand-written fixture data
-  (`fixtures.py`) standing in for the real Zurich feed until §2.4/§6.1 is
-  resolved.
+  `clustering.py`, `session.py`), backed by real Zurich data
+  (`parking_data.py`, loading the snapshot in `data/zurich_parking.json`).
+- `scripts/ingest_zurich_parking.py` — fetches the City of Zurich's
+  official "Öffentlich zugängliche Strassenparkplätze OGD" dataset (CC0,
+  ~45k blue/white-zone points; see §2.3) via its WFS endpoint and
+  writes the snapshot the app loads. Re-run it to refresh; per the
+  dataset's own metadata this won't surface new data until the city
+  updates its source (see §2.4/§6.1 — the freshness question is still
+  open, this is the best available official source in the meantime).
 - `web/` — a single static page (vanilla HTML/CSS/JS, no build step) that
   drives the API: pick a zone, start a search, and either use real
   geolocation or a manual lat/lon field to simulate "driving" past
   candidate spots and watch the auto-rejection logic kick in.
 - `tests/` — pytest coverage for the geo helpers, clustering/ranking, the
-  session state machine (including simulated drive-by sequences), and the
-  HTTP API.
+  session state machine (including simulated drive-by sequences), the
+  HTTP API, and a sanity check on the ingested data itself.
 
 Run it:
 
@@ -173,9 +179,14 @@ pytest                        # run the test suite
 ```
 
 Known MVP limitations (intentional, not oversights): single in-memory
-session store (no persistence, no auth), fixture data instead of a real
-feed, parking spots modeled as points rather than curb-segment geometry,
-and no garage/Parkleitsystem integration yet.
+session store (no persistence, no auth), the ingested data is frozen at
+the source's own end-of-2021 snapshot (§2.4), parking spots have no
+street name/address (the source dataset doesn't include one -- just an
+internal ID) and are modeled as points rather than curb-segment geometry,
+and there's no garage/Parkleitsystem integration yet. Real-data density
+also means clustering (O(n^2)) is capped to the nearest
+`MAX_CANDIDATES_PER_QUERY` segments per query rather than run over
+everything in radius -- see `backend/session.py`.
 
 ## 10. Deploying the web MVP to GCP
 
