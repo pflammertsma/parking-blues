@@ -120,6 +120,8 @@ def test_blue_zone_segments_carry_a_legal_until_field_white_zone_does_not(client
     white = created["upcoming"][0]
     assert white["id"] == "white-spot"
     assert "legal_until" not in white
+    assert "estimated_fee_chf_per_hour" not in created["current"]
+    assert white["estimated_fee_chf_per_hour"] > 0
 
 
 def test_duration_minutes_must_be_a_positive_integer(client):

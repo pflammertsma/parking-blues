@@ -8,6 +8,7 @@ from datetime import datetime
 from flask import Flask, jsonify, request
 
 from .blue_zone_rules import ZURICH_TZ, blue_zone_deadline
+from .fee_estimate import ESTIMATED_WHITE_ZONE_RATE_CHF_PER_HOUR
 from .parking_data import ALL_SEGMENTS
 from .geo import haversine_m
 from .models import ParkingSegment, ZoneType
@@ -60,6 +61,10 @@ def create_app(store: SessionStore | None = None) -> Flask:
             # is not it.
             deadline = blue_zone_deadline(now)
             body["legal_until"] = deadline.isoformat() if deadline else None
+        else:
+            # See backend/fee_estimate.py -- a single flat guess, not real
+            # per-spot pricing (which we have no data for at all).
+            body["estimated_fee_chf_per_hour"] = ESTIMATED_WHITE_ZONE_RATE_CHF_PER_HOUR
         return body
 
     def session_json(session: ParkingSession, now: datetime, event: str | None = None) -> dict:

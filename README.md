@@ -247,6 +247,25 @@ fitting (or stop fitting) as real time passes during a session, e.g. a
 blue-zone spot crossing into the lunch-hour or overnight window while the
 driver is still searching.
 
+### 9.3 White zone: an estimated hourly rate, explicitly not a real one
+
+Neither of our data sources (the live map's backend, §2.2, or the OGD WFS
+dataset, §2.3) includes a fee amount for white-zone spots -- just the
+fee-liable yes/no flag already used to set `zone_type`. Actual Zurich
+meter rates depend on a tariff zone (roughly 3-4x apart between the
+high-tariff inner city and everywhere else) that isn't in our data at
+all, and on time of day; public reporting on the current rate was also
+inconsistent, landing in the middle of what looked like a contested 2026
+fee increase.
+
+Given all of that, `backend/fee_estimate.py` is one flat, explicitly
+unverified number (`ESTIMATED_WHITE_ZONE_RATE_CHF_PER_HOUR`, currently
+2.0) in the middle of the general daytime range that turned up in
+research -- not tied to any spot's real tariff zone, which we have no way
+to look up. The API field is named `estimated_fee_chf_per_hour` (not
+`fee_chf_per_hour`) and the UI always appends "(rough estimate)" so
+nobody mistakes it for real pricing.
+
 ## 10. Deploying the web MVP to GCP
 
 `deploy/gcloud.sh <project-id> <billing-account-id> [region]` provisions a

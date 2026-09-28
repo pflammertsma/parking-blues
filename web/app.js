@@ -67,9 +67,11 @@ function formatDuration(segment) {
     const label = until.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     return `park until ~${label} (set your disc)`;
   }
-  return segment.max_duration_minutes
+  const cap = segment.max_duration_minutes
     ? `${segment.max_duration_minutes} min max`
     : "no fixed limit";
+  const rate = segment.estimated_fee_chf_per_hour;
+  return rate ? `${cap} &middot; ~CHF ${rate.toFixed(2)}/h (rough estimate)` : cap;
 }
 
 // Shared by the "current target" card and the map popups (candidateMarker/
