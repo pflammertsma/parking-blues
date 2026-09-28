@@ -11,6 +11,7 @@ on:
       - "web/**"
       - "scripts/publish_to_lammertsma.py"
       - ".github/workflows/publish-frontend.yml"
+  workflow_dispatch: {}
 
 jobs:
   publish:
