@@ -72,22 +72,29 @@ function formatDuration(segment) {
     : "no fixed limit";
 }
 
-function renderSegment(container, segment) {
-  if (!segment) {
-    container.textContent = "No candidates.";
-    return;
-  }
+// Shared by the "current target" card and the map popups (candidateMarker/
+// rejectedMarker below) so a spot shows the same information everywhere
+// it's shown, not a trimmed-down version in one place and not the other.
+function segmentDetailsHtml(segment) {
   const zoneClass = segment.zone_type === "blue" ? "zone-blue" : "zone-white";
   const duration = formatDuration(segment);
   // distance_from_you_m (live, from the driver) is what matters moment to
   // moment while driving; distance_m (fixed, from the destination) is kept
   // as context so a target's "am I actually headed the right way" story
   // doesn't disappear -- see the "why far away" note this replaced.
-  container.innerHTML = `
+  return `
     <div class="${zoneClass}">${segment.zone_type.toUpperCase()} ZONE</div>
     <div>${segment.address_label}</div>
     <div>${segment.distance_from_you_m} m from you (${segment.distance_m} m from destination) &middot; capacity ~${segment.estimated_capacity} &middot; ${duration}</div>
   `;
+}
+
+function renderSegment(container, segment) {
+  if (!segment) {
+    container.textContent = "No candidates.";
+    return;
+  }
+  container.innerHTML = segmentDetailsHtml(segment);
 }
 
 function candidateMarker(segment, highlighted) {
@@ -98,9 +105,7 @@ function candidateMarker(segment, highlighted) {
     fillColor: color,
     fillOpacity: highlighted ? 0.9 : 0.4,
     weight: highlighted ? 3 : 1,
-  }).bindPopup(
-    `<strong>${segment.address_label}</strong><br>${segment.zone_type} zone, ${segment.distance_from_you_m} m from you`
-  );
+  }).bindPopup(`<div class="popup-card">${segmentDetailsHtml(segment)}</div>`);
 }
 
 function rejectedMarker(segment) {
@@ -111,7 +116,7 @@ function rejectedMarker(segment) {
     fillOpacity: 0.5,
     weight: 1,
   }).bindPopup(
-    `<strong>${segment.address_label}</strong><br>${segment.zone_type} zone -- no space, already checked`
+    `<div class="popup-card">${segmentDetailsHtml(segment)}<div class="popup-note">No space -- already checked</div></div>`
   );
 }
 

@@ -185,8 +185,28 @@ button:disabled {
   margin-bottom: 0.75rem;
 }
 
-.card .zone-blue { color: var(--zone-blue); font-weight: bold; }
-.card .zone-white { color: var(--zone-white); font-weight: bold; }
+/* Not scoped to .card: also used inside map popups (segmentDetailsHtml in
+   app.js), which aren't .card elements. */
+.zone-blue { color: var(--zone-blue); font-weight: bold; }
+.zone-white { color: var(--zone-white); font-weight: bold; }
+
+.popup-note {
+  color: var(--muted-fg);
+  font-size: 0.85rem;
+}
+
+/* Leaflet's own popup chrome is theme-unaware (always light) -- override it
+   so the richer content segmentDetailsHtml puts in there stays legible in
+   dark mode instead of white-box-on-dark-page. */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.leaflet-popup-close-button {
+  color: var(--muted-fg) !important;
+}
 
 #log {
   font-family: ui-monospace, monospace;
