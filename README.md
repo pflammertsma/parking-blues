@@ -113,8 +113,8 @@ Suggested stack: Kotlin/Ktor or Python/FastAPI, PostGIS, a small scheduled job f
 ### 5.2 Mobile clients
 Android Auto and CarPlay **require native platform SDKs** for the in-car surface (Android's `androidx.car.app` Car App Library; Apple's `CarPlay` framework with `CPMapTemplate`/`CPListTemplate`) — neither Flutter nor React Native can drive these car-screen surfaces, so cross-platform UI frameworks are not viable for this app. Plan:
 
-- **Shared core** (Kotlin Multiplatform, compiled to JVM for Android and via Kotlin/Native for iOS): candidate generation, clustering, pass-by/rejection state machine, API client, data models — the parts covered in §4 that must behave identically on both platforms.
-- **Android**: Kotlin + Jetpack Compose (phone UI) + Car App Library (Android Auto UI: `NavigationTemplate`/`PlaceListMapTemplate`).
+- **Shared core** (Kotlin Multiplatform, compiled to JVM for Android and via Kotlin/Native for iOS): data models and an API client only — a thin layer, not a reimplementation. **Correction from the original plan**: candidate generation, clustering, and the pass-by/rejection state machine stay server-side (§5.1), specifically so scoring/ranking logic stays tunable without app-store releases and so the algorithm can't drift between the web MVP, Android, and iOS clients. The shared module's job is just: POST live GPS position, render whatever the server returns — see `android/shared/` and `android/README.md`.
+- **Android**: Kotlin + Jetpack Compose (phone UI) + Car App Library (car UI: `PlaceListMapTemplate` under the `POI` category, not `NavigationTemplate`/`NAVIGATION` — this app ranks and shows candidates, it doesn't turn-by-turn route to them).
 - **iOS**: Swift + SwiftUI (phone UI) + CarPlay framework. Note: Apple gates CarPlay navigation-app entitlements behind a request/approval process — this should be applied for early, as it can take time.
 - **Location**: Android `FusedLocationProviderClient` + Geofencing API, run from a foreground service while a search is active; iOS `CLLocationManager` region monitoring, requiring "Always" authorization with justification (this is a hard App Store review point for a driving app that tracks location in the background — budget time for review pushback).
 
@@ -270,10 +270,19 @@ nobody mistakes it for real pricing.
 
 `deploy/gcloud.sh <project-id> <billing-account-id> [region]` provisions a
 new GCP project and deploys to Cloud Run in one go (region defaults to
-`europe-west6`, Zurich). It assumes `gcloud auth login` is already done and
-you have a billing account to link (`gcloud billing accounts list`).
-Requires `gcloud` locally -- it cannot be run from a Claude Code on the
-web session, which has no access to your machine's credentials.
+`europe-west1`; see that script's comment on why not `europe-west6`,
+which would have matched the app's Zurich premise but didn't work out for
+this project's actual deploy). It assumes `gcloud auth login` is already
+done and you have a billing account to link (`gcloud billing accounts
+list`). Requires `gcloud` locally -- it cannot be run from a Claude Code
+on the web session, which has no access to your machine's credentials.
+
+The live service for this project is
+`https://parking-blues-794638973209.europe-west1.run.app` (also what the
+Android debug/release builds point at, see §11) -- as of this writing
+there is no Cloud Build trigger wired up for it despite `cloudbuild.yaml`
+existing (zero triggers, zero build history on the project); redeploy
+manually with the command above until/unless that trigger is recreated.
 
 Under the hood this is a plain `gcloud run deploy --source .`: Cloud
 Run's buildpack detects `requirements.txt` and `Procfile` and runs
@@ -286,3 +295,42 @@ keeps sessions in an in-memory dict scoped to one process; Cloud Run
 scaling out to multiple instances would silently drop sessions created on
 a different one. That's fine for a low-traffic MVP demo, not for real
 concurrent load -- see the "known MVP limitations" note in section 9.
+
+## 11. Android app (milestone 6, in progress)
+
+A first version of the Android Auto / Android Automotive OS (AAOS) client,
+built with Kotlin Multiplatform per §5.2. See `android/README.md` for the
+full module layout, build/run instructions, and testing notes/gotchas;
+summary here:
+
+- `android/shared/` — the thin KMP core: DTOs mirroring `segment_json()`/
+  `session_json()` in `backend/app.py` exactly, a Ktor API client, and a
+  `StateFlow`-based session repository. No algorithm logic here on
+  purpose (§5.2) -- both the phone and car UIs just render whatever the
+  server returns.
+- `android/car/` — the actual car screens (Car App Library), shared
+  verbatim between Android Auto and AAOS: a `ListTemplate` zone picker,
+  then a search screen showing the live-ranked candidate list. Declared
+  as a **POI app** (`androidx.car.app.category.POI` +
+  `androidx.car.app.MAP_TEMPLATES`), not a navigation app -- it ranks and
+  shows candidates, it doesn't turn-by-turn route to them. The active
+  search screen draws its **own** map (Maps SDK for Android, via a
+  `Surface`/`MapWithContentTemplate`), with markers `PlaceListMapTemplate`
+  can't do: a distinct "you" pin, the destination pin, and dimmed
+  rejected spots, matching `web/app.js`'s map -- not just the host's own
+  generic pinned list.
+- `android/app/` — the phone module (Compose: zone picker + "Find
+  parking" button) *and* the Android Auto entry point (a head unit/DHU
+  binds to the `CarAppService` here).
+- `android/automotive/` — the AAOS entry point, a **separate installed
+  APK** with the **same `applicationId`** as `android/app/` (Google
+  Play's "one listing, two APKs" model), needed because AAOS requires its
+  own launcher (`CarAppActivity`, from the separate
+  `androidx.car.app:app-automotive` artifact) that Android Auto doesn't.
+
+Verified end-to-end against the real backend and real Zurich data, on
+**both** platforms: an AAOS emulator (host-rendered `PlaceListMapTemplate`
+map; the self-drawn map hits a Play Store/emulator limitation there, see
+`android/README.md`) and, fully, a real phone via Android Auto/Desktop
+Head Unit -- the self-drawn map with live markers, confirming the
+custom-map approach genuinely works on the platform it matters for.

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android Auto's own "uses TEMPLATE" declaration, referenced by the
+     com.google.android.gms.car.application meta-data in AndroidManifest.xml.
+     Distinct meta-data key from :automotive's com.android.automotive (which
+     is Android Automotive OS-specific), but the same content and the same
+     reason: the host validator rejects the app otherwise ("CAR.VALIDATOR:
+     Package DENIED; Uses for TEMPLATE not defined", found by inspecting
+     the phone's own logcat when Parking Blues didn't show up in Android
+     Auto's launcher at all).
+     https://developer.android.com/training/cars/apps/auto -->
+<automotiveApp>
+    <uses name="template" />
+</automotiveApp>

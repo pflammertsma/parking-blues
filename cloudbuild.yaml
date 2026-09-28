@@ -10,7 +10,7 @@ steps:
       - deploy
       - parking-blues
       - --source=.
-      - --region=europe-west6
+      - --region=europe-west1
       - --allow-unauthenticated
       - --max-instances=1
 options:

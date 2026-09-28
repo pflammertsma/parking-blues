@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android Automotive OS-specific module. Separate from :app (the phone
+     module) per Google's recommended project structure; see
+     https://developer.android.com/training/cars/apps/library/set-up-project
+     and https://developer.android.com/training/cars/apps/automotive-os.
+     This is the module that actually gets installed onto the car; :app's
+     MainActivity is irrelevant here; androidx.car.app.activity.CarAppActivity
+     (from the app-automotive dependency) is the launcher entry point, and it
+     hosts ParkingCarAppService's templates directly. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Required by PlaceListMapTemplate (SearchScreen). We're a POI app,
+         not a navigation app, so this is the map-templates permission, not
+         androidx.car.app.NAVIGATION_TEMPLATES; the two are mutually
+         exclusive per Google's review policy.
+         https://developer.android.com/training/cars/apps/poi -->
+    <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
+
+    <!-- Required to receive the Surface for a custom-drawn map
+         (AppManager.setSurfaceCallback) in MapSearchScreen, on top of
+         MAP_TEMPLATES above.
+         https://developer.android.com/training/cars/apps/library/draw-maps -->
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
+
+    <uses-feature
+        android:name="android.hardware.type.automotive"
+        android:required="true" />
+    <uses-feature
+        android:name="android.software.car.templates_host"
+        android:required="true" />
+
+    <application
+        android:name=".ParkingAutomotiveApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name">
+
+        <meta-data
+            android:name="com.android.automotive"
+            android:resource="@xml/automotive_app_desc" />
+
+        <!-- Required by the Maps SDK for Android (play-services-maps),
+             used to render MapSearchScreen's custom map. Value comes from
+             android/local.properties (gitignored), injected via
+             manifestPlaceholders in build.gradle.kts; see that file's
+             comment for how the key is restricted. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${mapsApiKey}" />
+
+        <!-- The actual launcher entry point on Automotive OS. It hosts
+             ParkingCarAppService's Screens/Templates directly; there is
+             deliberately no separate custom Activity here. -->
+        <activity
+            android:name="androidx.car.app.activity.CarAppActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="distractionOptimized" android:value="true" />
+        </activity>
+
+        <service
+            android:name="com.parkingblues.car.car.ParkingCarAppService"
+            android:exported="true"
+            android:foregroundServiceType="location">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.POI" />
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
+
+    </application>
+
+</manifest>

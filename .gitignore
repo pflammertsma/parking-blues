@@ -2,3 +2,17 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# GCP service account keys -- never commit these.
+*-deployer-key.json
+*.json.key
+service-account*.json
+
+# Android / Kotlin Multiplatform (android/)
+android/**/build/
+android/.gradle/
+android/local.properties
+android/.idea/
+android/**/*.iml
+android/**/.cxx/
+android/captures/

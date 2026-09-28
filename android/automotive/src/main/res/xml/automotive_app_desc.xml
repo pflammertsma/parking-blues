@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AAOS-specific descriptor read via the com.android.automotive meta-data
+     in AndroidManifest.xml. "template" (not a per-category name) is what
+     Google's own docs specify for any Car App Library templated app here;
+     the category (POI) is declared separately, on the CarAppService's own
+     intent-filter. -->
+<automotiveApp>
+    <uses name="template" />
+</automotiveApp>

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phone module. Also the Android Auto (phone-projected) entry point: a
+     head unit/DHU binds to the CarAppService declared below, discovered via
+     this normal, Play-Store-installable app; unlike Android Automotive OS
+     (a separate, car-only APK, see :automotive), Android Auto doesn't need
+     its own launcher Activity or uses-feature, since MainActivity already
+     satisfies "the app has a normal launcher". Same ParkingCarAppService
+     class as :automotive uses, from :car; see android/README.md. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Required by PlaceListMapTemplate/MapWithContentTemplate (SearchScreen,
+         MapSearchScreen in :car). POI app, not navigation, so this is the
+         map-templates permission, not androidx.car.app.NAVIGATION_TEMPLATES.
+         https://developer.android.com/training/cars/apps/poi -->
+    <uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />
+
+    <!-- Required to receive the Surface for MapSearchScreen's custom-drawn
+         map (AppManager.setSurfaceCallback), on top of MAP_TEMPLATES above.
+         https://developer.android.com/training/cars/apps/library/draw-maps -->
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
+
+    <application
+        android:name=".ParkingBluesApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.ParkingBlues">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.ParkingBlues">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Required by the Maps SDK for Android (play-services-maps), used
+             to render MapSearchScreen's custom map. Value comes from
+             android/local.properties (gitignored); see that file's comment
+             for how the key is restricted. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${mapsApiKey}" />
+
+        <!-- Android Auto's own template-capability declaration (distinct
+             meta-data key from :automotive's com.android.automotive, but
+             the same automotive_app_desc.xml content). Without this, the
+             host's CAR.VALIDATOR silently denies the app; it never
+             appears in Android Auto's launcher or its customize-launcher
+             list at all, with no on-screen error; only visible in logcat
+             as "Package DENIED; Uses for TEMPLATE not defined".
+             https://developer.android.com/training/cars/apps/auto -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+        <service
+            android:name="com.parkingblues.car.car.ParkingCarAppService"
+            android:exported="true"
+            android:foregroundServiceType="location">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.POI" />
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
+
+    </application>
+
+</manifest>

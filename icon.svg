@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="474"
+   height="474"
+   version="1.1"
+   id="svg2"
+   sodipodi:docname="icon.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs2" />
+  <sodipodi:namedview
+     id="namedview2"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="1.2183545"
+     inkscape:cx="180.98181"
+     inkscape:cy="219.55844"
+     inkscape:window-width="2688"
+     inkscape:window-height="1341"
+     inkscape:window-x="2188"
+     inkscape:window-y="0"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg2" />
+  <path
+     fill="#ffffff"
+     d="M 0,0 H 474 V 474"
+     id="path1"
+     style="display:inline"
+     inkscape:label="white" />
+  <path
+     fill="#268bcc"
+     d="M 0,0 V 474 H 474"
+     id="path2"
+     style="display:inline"
+     inkscape:label="blue" />
+  <path
+     id="path5"
+     style="font-size:192px;line-height:1.25;font-family:'Snv Becker';-inkscape-font-specification:'Snv Becker';display:inline;stroke-width:0.338572;fill:#268bcc;fill-opacity:1"
+     d="M 116.78919 122.75496 L 116.78919 150.44641 L 140.22733 173.88455 L 140.22733 144.03603 L 167.69593 144.03603 C 171.57093 144.03603 174.75793 145.31751 177.25793 147.88001 C 179.82043 150.44251 181.10191 153.47383 181.10191 156.97383 L 181.10191 161.19209 C 181.10191 164.81709 179.82043 167.87981 177.25793 170.37981 C 174.82043 172.75481 171.60203 173.94208 167.60203 173.94208 L 140.28486 173.94208 L 161.56659 195.22382 L 170.69546 195.22382 C 180.82046 195.28632 189.28971 191.47329 196.10221 183.78579 C 201.72721 177.28579 204.53939 169.75459 204.53939 161.19209 L 204.53939 156.97383 C 204.60189 147.53633 201.41423 139.41116 194.97673 132.59866 C 188.47673 125.9737 180.41436 122.6925 170.78936 122.75496 L 116.78919 122.75496 z "
+     transform="matrix(2.9535856,0,0,2.9535856,-215.02108,-314.43057)" />
+  <path
+     id="path6"
+     style="font-size:192px;line-height:1.25;font-family:'Snv Becker';-inkscape-font-specification:'Snv Becker';display:inline;stroke-width:0.338572;fill:#ffffff;fill-opacity:1"
+     d="M 116.78919 150.44641 L 116.78919 250.72376 L 140.22733 250.72376 L 140.22733 195.22382 L 161.56659 195.22382 L 140.28486 173.94208 L 140.22733 173.94208 L 140.22733 173.88455 L 116.78919 150.44641 z "
+     transform="matrix(2.9535856,0,0,2.9535856,-215.02108,-314.43057)" />
+</svg>

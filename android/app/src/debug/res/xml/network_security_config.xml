@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-build-only: allows plain HTTP to the emulator's loopback alias
+     for the host machine's dev server (see BASE_URL in app/build.gradle.kts).
+     The release build talks to the deployed Cloud Run URL over HTTPS and
+     never sees this file. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

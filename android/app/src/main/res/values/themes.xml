@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Minimal platform theme; the actual UI is Compose (MainActivity),
+         this just avoids a flash of an unstyled window before it draws. -->
+    <style name="Theme.ParkingBlues" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
