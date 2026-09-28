@@ -81,6 +81,26 @@ def test_full_drive_by_flow_via_the_api(client):
     assert [s["id"] for s in body["rejected"]] == ["A"]
 
 
+def test_distance_from_you_reflects_live_position_not_destination(client):
+    created = client.post(
+        "/api/session", json={"lat": ORIGIN_LAT, "lon": ORIGIN_LON, "zone": "both"}
+    ).get_json()
+    session_id = created["session_id"]
+    # Before any position update, "you" is the destination -- see
+    # backend/session.py on why that's the sensible starting point.
+    assert created["you"] == {"lat": ORIGIN_LAT, "lon": ORIGIN_LON}
+    assert created["current"]["distance_from_you_m"] == created["current"]["distance_m"]
+
+    lat, lon = offset_point(ORIGIN_LAT, ORIGIN_LON, 90, 0)  # "A" is at 100m north
+    body = client.post(
+        f"/api/session/{session_id}/position", json={"lat": lat, "lon": lon}
+    ).get_json()
+    assert body["you"] == {"lat": lat, "lon": lon}
+    assert body["current"]["distance_from_you_m"] == pytest.approx(10, abs=0.5)
+    # distance_m is fixed to the destination and shouldn't have moved.
+    assert body["current"]["distance_m"] == pytest.approx(100, abs=0.5)
+
+
 def test_blue_zone_segments_carry_a_legal_until_field_white_zone_does_not(client):
     segments = [
         make_segment("blue-spot", 50, zone_type=ZoneType.BLUE),

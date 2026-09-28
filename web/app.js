@@ -74,10 +74,14 @@ function renderSegment(container, segment) {
   }
   const zoneClass = segment.zone_type === "blue" ? "zone-blue" : "zone-white";
   const duration = formatDuration(segment);
+  // distance_from_you_m (live, from the driver) is what matters moment to
+  // moment while driving; distance_m (fixed, from the destination) is kept
+  // as context so a target's "am I actually headed the right way" story
+  // doesn't disappear -- see the "why far away" note this replaced.
   container.innerHTML = `
     <div class="${zoneClass}">${segment.zone_type.toUpperCase()} ZONE</div>
     <div>${segment.address_label}</div>
-    <div>${segment.distance_m} m away &middot; capacity ~${segment.estimated_capacity} &middot; ${duration}</div>
+    <div>${segment.distance_from_you_m} m from you (${segment.distance_m} m from destination) &middot; capacity ~${segment.estimated_capacity} &middot; ${duration}</div>
   `;
 }
 
@@ -90,7 +94,7 @@ function candidateMarker(segment, highlighted) {
     fillOpacity: highlighted ? 0.9 : 0.4,
     weight: highlighted ? 3 : 1,
   }).bindPopup(
-    `<strong>${segment.address_label}</strong><br>${segment.zone_type} zone, ${segment.distance_m} m`
+    `<strong>${segment.address_label}</strong><br>${segment.zone_type} zone, ${segment.distance_from_you_m} m from you`
   );
 }
 
@@ -152,7 +156,7 @@ function render(data) {
   list.innerHTML = "";
   for (const segment of data.upcoming) {
     const li = document.createElement("li");
-    li.textContent = `${segment.address_label} (${segment.zone_type}, ${segment.distance_m} m)`;
+    li.textContent = `${segment.address_label} (${segment.zone_type}, ${segment.distance_from_you_m} m from you)`;
     list.appendChild(li);
   }
 }

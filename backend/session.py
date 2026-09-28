@@ -55,6 +55,14 @@ class ParkingSession:
     # which could mean a barrier (rail lines, a river) the driver would
     # actually have to go around -- see README section 4.
     candidates: list[list[ParkingSegment]]
+    # The driver's last known position -- starts at the destination (before
+    # a session gets any live position updates, "where the driver is" and
+    # "where they're headed" are the same point) and is updated on every
+    # update_position call. Lets the client show distance from the driver,
+    # not just from the destination, which is what actually matters once
+    # you're moving -- see the segment_json "distance_from_you_m" field.
+    last_lat: float
+    last_lon: float
     rejected_ids: set[str] = field(default_factory=set)
     # Kept alongside rejected_ids (which is also used to exclude these from
     # future candidate queries) so the client can still show where the
@@ -117,6 +125,8 @@ class ParkingSession:
         moving (not just once they stop), so both auto-rejection and
         retargeting react smoothly instead of needing a discrete drop.
         """
+        self.last_lat, self.last_lon = lat, lon
+
         if self.current is None:
             return "exhausted"
 
@@ -200,6 +210,8 @@ class SessionStore:
             zone_filter=zone_filter,
             radius_m=radius_m,
             candidates=candidates,
+            last_lat=origin_lat,
+            last_lon=origin_lon,
             state=SessionState.SEARCHING if candidates else SessionState.EXHAUSTED,
         )
         self._sessions[session.id] = session
@@ -246,8 +258,43 @@ class SessionStore:
         session.confirm_current()
         return "parked"
 
+    def _pull_in_local_cluster(self, session: ParkingSession, lat: float, lon: float) -> bool:
+        """When the driver's current cluster just ran out, the next one up
+        is whatever's next in the destination-ranked order -- which could
+        mean sending them clear across the map (or a barrier) rather than
+        widening the search right around where they actually are. Look for
+        anything new near the driver first; only fall back to the existing,
+        possibly-distant queue if nothing turns up locally. Returns True if
+        a local cluster was found and prepended.
+        """
+        known_ids = session.rejected_ids | {
+            seg.id for cluster in session.candidates for seg in cluster
+        }
+        local_clusters = self._candidates_for(
+            session.zone_filter, DEFAULT_INITIAL_RADIUS_M, lat, lon, exclude_ids=known_ids
+        )
+        if not local_clusters:
+            return False
+        local_clusters.sort(
+            key=lambda cluster: min(haversine_m(lat, lon, s.lat, s.lon) for s in cluster)
+        )
+        session.candidates = local_clusters + session.candidates
+        session.closest_approach_m = {}
+        return True
+
     def update_position(self, session: ParkingSession, lat: float, lon: float) -> str:
+        cluster_before = (
+            {s.id for s in session.candidates[0]} if session.candidates else set()
+        )
+
         event = session.update_position(lat, lon)
+
+        if session.state == SessionState.SEARCHING:
+            cluster_after = {s.id for s in session.candidates[0]}
+            moved_to_new_cluster = cluster_before and cluster_before.isdisjoint(cluster_after)
+            if moved_to_new_cluster and self._pull_in_local_cluster(session, lat, lon):
+                event = "retargeted"
+
         if session.state == SessionState.EXHAUSTED:
             self._auto_expand_while_exhausted(session)
             if session.state == SessionState.SEARCHING:

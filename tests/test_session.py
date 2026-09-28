@@ -38,6 +38,17 @@ def test_create_session_orders_nearest_candidate_first():
     assert session.current.id == "near"
 
 
+def test_last_position_starts_at_the_destination_and_tracks_updates():
+    segments = [make_segment("only", 100)]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000)
+    assert (session.last_lat, session.last_lon) == (ORIGIN_LAT, ORIGIN_LON)
+
+    lat, lon = drive_position(40)
+    session.update_position(lat, lon)
+    assert (session.last_lat, session.last_lon) == (lat, lon)
+
+
 def test_zone_filter_excludes_non_matching_segments():
     segments = [make_segment("blue-spot", 50, zone_type=ZoneType.BLUE),
                 make_segment("white-spot", 60, zone_type=ZoneType.WHITE)]
@@ -187,6 +198,34 @@ def test_driving_past_a_dense_row_of_spots_rejects_each_one():
 
     assert session.rejected_ids == {f"s{i}" for i in range(5)}
     assert session.state == SessionState.EXHAUSTED
+
+
+def test_cluster_exhaustion_pulls_in_a_new_local_cluster_before_falling_back():
+    # "near" and "far" are both known from the start (separate clusters,
+    # both within the initial radius); "local" is outside that initial
+    # radius, so it's undiscovered until the driver actually gets near it.
+    # Once "near" is exhausted, the driver ends up much closer to "local"
+    # than to "far" -- the store should notice and pull "local" in ahead of
+    # falling back to "far", instead of just handing over whatever was next
+    # in the original destination-ranked order (see README section 4).
+    segments = [
+        make_segment("near", 100),
+        make_segment("far", 100, east_m=100),
+        make_segment("local", 100, east_m=-200),
+    ]
+    store = SessionStore(segments)
+    session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=150)
+    assert session.current.id == "near"
+    assert candidate_ids(session) == ["near", "far"]  # "local" not yet known
+
+    store.update_position(session, *drive_position(100 - (APPROACH_THRESHOLD_M - 1)))
+    event = store.update_position(
+        session, *drive_position(100 + APPROACH_THRESHOLD_M + DEPART_MARGIN_M)
+    )
+
+    assert event == "retargeted"
+    assert session.current.id == "local"
+    assert any(c.id == "far" for c in session.upcoming)
 
 
 def test_auto_rejecting_the_last_candidate_reports_exhausted():
