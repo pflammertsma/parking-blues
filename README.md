@@ -366,6 +366,22 @@ scaling out to multiple instances would silently drop sessions created on
 a different one. That's fine for a low-traffic MVP demo, not for real
 concurrent load -- see the "known MVP limitations" note in section 9.
 
+**CI**: `.github/workflows/deploy-backend.yml` runs this same `gcloud run
+deploy --source .` automatically on every push to `main` that touches
+`backend/`, `main.py`, `requirements.txt`, or `Procfile`, authenticating as
+a dedicated `parking-blues-deployer` service account (roles: `run.admin`,
+`cloudbuild.builds.editor`, `artifactregistry.writer`, `storage.admin`,
+`iam.serviceAccountUser` -- the set `gcloud run deploy --source` needs to
+build and deploy on your behalf) via the `GCP_SA_KEY` repo secret. This
+replaces an never-actually-set-up Cloud Build trigger: an earlier
+`cloudbuild.yaml` in this repo *described* a build config as though a
+Cloud Build trigger already existed and ran it on every push, but no such
+trigger was ever created -- every deploy up to this point, including the
+one currently live, was run by hand. `cloudbuild.yaml` has been removed;
+this GitHub Action is the only deploy automation now, matching how the
+frontend publishes (section 11), rather than running two different CI
+systems for one small app.
+
 ## 11. Serving the frontend from lammertsma.dev + API on a subdomain
 
 **Current status: live.**
