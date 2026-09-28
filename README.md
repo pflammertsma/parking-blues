@@ -380,9 +380,22 @@ Hosting site to live in the same GCP project, which they don't --
 **Frontend** -- plain static hosting, in a *different* repo
 (`pflammertsma/lammertsma-dev`, the personal site), copied under
 `public/projects/parking-blues/` following the same pattern as that repo's
-other projects (e.g. `switch-plates/`). It's a manual copy, not a build
-step or a git submodule: whenever `web/` changes here, re-copy
-`index.html`/`app.js`/`style.css` into that repo and `firebase deploy`.
+other projects (e.g. `switch-plates/`). Not a build step or a git
+submodule -- `scripts/publish_to_lammertsma.py` copies `web/`'s three files
+verbatim and applies the small portfolio-specific tweaks the app itself
+doesn't carry (`noindex,nofollow`, favicon, a title byline), always from
+the pristine source so it's safe to re-run repeatedly.
+`.github/workflows/publish-frontend.yml` runs that script automatically on
+every push to `main` that touches `web/`, commits the result to
+`lammertsma-dev` (so that repo's git history stays the real record of
+what's live, not just whatever CI last deployed), and runs `firebase
+deploy --only hosting` there. Needs two repo secrets on this side,
+neither of which this session can generate (both require an interactive
+browser login):
+- `LAMMERTSMA_DEV_PUSH_TOKEN`: a GitHub PAT with write access to
+  `pflammertsma/lammertsma-dev`, so this repo's CI can push there.
+- `FIREBASE_TOKEN`: from `firebase login:ci` (run once, locally, against
+  the `lammertsma-dev` Firebase project).
 
 **API** -- `web/app.js`'s `API_BASE` constant detects when it's being
 served from a `lammertsma.dev` hostname and points `fetch()` calls at

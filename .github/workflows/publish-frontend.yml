@@ -1,0 +1,57 @@
+name: Publish frontend to lammertsma.dev
+
+# Whenever web/ changes on main, sync it into pflammertsma/lammertsma-dev's
+# public/projects/parking-blues/ and deploy that site's Firebase Hosting.
+# See README section 11 for the split-origin architecture this publishes
+# into (this frontend on lammertsma.dev, the API on its own subdomain).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "scripts/publish_to_lammertsma.py"
+      - ".github/workflows/publish-frontend.yml"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout parking-blues
+        uses: actions/checkout@v4
+
+      - name: Checkout lammertsma-dev
+        uses: actions/checkout@v4
+        with:
+          repository: pflammertsma/lammertsma-dev
+          token: ${{ secrets.LAMMERTSMA_DEV_PUSH_TOKEN }}
+          path: lammertsma-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Copy frontend into lammertsma-dev
+        run: python3 scripts/publish_to_lammertsma.py lammertsma-dev
+
+      - name: Commit and push if changed
+        id: sync
+        working-directory: lammertsma-dev
+        run: |
+          git config user.name "parking-blues-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add public/projects/parking-blues
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No frontend changes to publish."
+          else
+            git commit -m "Sync parking-blues frontend from pflammertsma/parking-blues@${{ github.sha }}"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to Firebase Hosting
+        if: steps.sync.outputs.changed == 'true'
+        working-directory: lammertsma-dev
+        run: |
+          npm install -g firebase-tools
+          firebase deploy --only hosting --token "${{ secrets.FIREBASE_TOKEN }}" --non-interactive
