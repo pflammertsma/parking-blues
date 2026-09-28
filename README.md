@@ -266,6 +266,40 @@ to look up. The API field is named `estimated_fee_chf_per_hour` (not
 `fee_chf_per_hour`) and the UI always appends "(rough estimate)" so
 nobody mistakes it for real pricing.
 
+### 9.4 Clustering/ranking tuned against real density, not fixture data
+
+`backend/clustering.py`'s defaults were chosen against the original
+12-point fixture dataset and never revisited after real Zurich data (§9)
+replaced it -- which produced genuinely bad picks. Two separate problems,
+found by reproducing a real "why is this so far away" report:
+
+- **`DEFAULT_CLUSTER_EPS_M` was 80m.** Real segments sit only a few
+  meters apart along a curb, so any eps loose enough to bridge a street
+  corner chains an entire connected neighborhood into one "cluster" --
+  the top-ranked cluster near a real test point spanned 235 segments over
+  300+ meters, nowhere near walkable. Now 12m: tight enough to not bridge
+  across intersections, loose enough to still merge one continuous curb
+  run.
+- **`cluster_score` was linear capacity / (1 + distance/100).** Even
+  after fixing the eps, a 40-segment cluster 264m away still outscored a
+  9-segment one 69m away -- a single driver only needs one spot, and 9
+  nearby tries is already plenty of hedge against some being taken, so
+  capacity going from 20 to 40 shouldn't matter as much to the score as
+  going from 5 to 9. Now `log1p(capacity) / (1 + distance/50)`: capacity
+  has diminishing returns, and distance is weighted more steeply, so
+  proximity dominates at realistic search radii instead of a much bigger
+  cluster winning over a much closer one.
+
+Also added a soft preference for free (blue-zone) clusters when searching
+both zones together (`FREE_ZONE_SCORE_BONUS`, up to +30% score scaled by
+what fraction of the cluster is free) -- a nudge, not a hard rule, since
+a genuinely much closer paid cluster should still win over a distant free
+one.
+
+Verified against the real default search point: "both zones" now picks a
+white-zone spot 55.9m away instead of jumping to a blue cluster 230.6m
+away for more aggregate capacity.
+
 ## 10. Deploying the web MVP to GCP
 
 `deploy/gcloud.sh <project-id> <billing-account-id> [region]` provisions a

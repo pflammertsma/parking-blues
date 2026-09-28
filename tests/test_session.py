@@ -147,16 +147,16 @@ def test_driving_past_a_spot_without_stopping_triggers_auto_rejection():
 
 
 def test_top_suggestion_switches_to_a_closer_candidate_in_the_same_cluster():
-    # "P" and "Q" are 60m apart (within the clustering eps) so they're one
+    # "P" and "Q" are 10m apart (within the clustering eps) so they're one
     # cluster; "P" starts closest to the origin (so it's the initial pick),
     # but the driver heads for "Q" instead without ever getting near "P" --
     # the top suggestion should follow within the shared cluster.
-    segments = [make_segment("P", 100), make_segment("Q", 100, east_m=60)]
+    segments = [make_segment("P", 100), make_segment("Q", 100, east_m=10)]
     store = SessionStore(segments)
     session = store.create(ORIGIN_LAT, ORIGIN_LON, {ZoneType.BLUE}, radius_m=1000)
     assert session.current.id == "P"
 
-    lat, lon = offset_point(ORIGIN_LAT, ORIGIN_LON, 100, 60)
+    lat, lon = offset_point(ORIGIN_LAT, ORIGIN_LON, 100, 10)
     event = session.update_position(lat, lon)
 
     assert event == "retargeted"
