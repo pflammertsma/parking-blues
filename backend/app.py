@@ -4,17 +4,14 @@ machine, plus the static web/ MVP UI. See README section 8, milestone 3.
 
 import os
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from flask import Flask, jsonify, request
 
-from .blue_zone_rules import blue_zone_deadline
+from .blue_zone_rules import ZURICH_TZ, blue_zone_deadline
 from .parking_data import ALL_SEGMENTS
 from .geo import haversine_m
 from .models import ParkingSegment, ZoneType
 from .session import ParkingSession, SessionStore
-
-ZURICH_TZ = ZoneInfo("Europe/Zurich")
 
 ZONE_FILTERS: dict[str, set[ZoneType]] = {
     "blue": {ZoneType.BLUE},
@@ -36,6 +33,7 @@ def create_app(store: SessionStore | None = None) -> Flask:
         origin_lon: float,
         you_lat: float,
         you_lon: float,
+        now: datetime,
     ) -> dict:
         body = {
             "id": segment.id,
@@ -57,23 +55,22 @@ def create_app(store: SessionStore | None = None) -> Flask:
             ),
         }
         if segment.zone_type == ZoneType.BLUE:
-            # Computed as if arriving right now, in Zurich local time --
-            # NOT datetime.now(), which is the server's own timezone (UTC
-            # on Cloud Run) and would silently misjudge which rule window
-            # applies. See backend/blue_zone_rules.py for the actual
-            # (time-of-day-dependent) rule; a flat "60 min" is not it.
-            deadline = blue_zone_deadline(datetime.now(ZURICH_TZ))
+            # `now` must be Zurich-local -- see backend/blue_zone_rules.py
+            # for the actual (time-of-day-dependent) rule; a flat "60 min"
+            # is not it.
+            deadline = blue_zone_deadline(now)
             body["legal_until"] = deadline.isoformat() if deadline else None
         return body
 
-    def session_json(session: ParkingSession, event: str | None = None) -> dict:
-        args = (session.origin_lat, session.origin_lon, session.last_lat, session.last_lon)
+    def session_json(session: ParkingSession, now: datetime, event: str | None = None) -> dict:
+        args = (session.origin_lat, session.origin_lon, session.last_lat, session.last_lon, now)
         body = {
             "session_id": session.id,
             "state": session.state.value,
             "radius_m": session.radius_m,
             "origin": {"lat": session.origin_lat, "lon": session.origin_lon},
             "you": {"lat": session.last_lat, "lon": session.last_lon},
+            "preferred_duration_minutes": session.preferred_duration_minutes,
             "current": (
                 segment_json(session.current, *args) if session.current else None
             ),
@@ -102,15 +99,27 @@ def create_app(store: SessionStore | None = None) -> Flask:
         if zone not in ZONE_FILTERS:
             return jsonify(error=f"zone must be one of {list(ZONE_FILTERS)}"), 400
 
-        session = store.create(lat, lon, ZONE_FILTERS[zone])
-        return jsonify(session_json(session)), 201
+        duration_minutes = data.get("duration_minutes")
+        if duration_minutes is not None:
+            try:
+                duration_minutes = int(duration_minutes)
+                if duration_minutes <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return jsonify(error="duration_minutes must be a positive integer"), 400
+
+        now = datetime.now(ZURICH_TZ)
+        session = store.create(
+            lat, lon, ZONE_FILTERS[zone], preferred_duration_minutes=duration_minutes, now=now
+        )
+        return jsonify(session_json(session, now)), 201
 
     @app.get("/api/session/<session_id>")
     def get_session(session_id: str):
         session = store.get(session_id)
         if session is None:
             return jsonify(error="session not found"), 404
-        return jsonify(session_json(session))
+        return jsonify(session_json(session, datetime.now(ZURICH_TZ)))
 
     @app.post("/api/session/<session_id>/position")
     def update_position(session_id: str):
@@ -123,16 +132,18 @@ def create_app(store: SessionStore | None = None) -> Flask:
             lon = float(data["lon"])
         except (KeyError, TypeError, ValueError):
             return jsonify(error="lat and lon are required numbers"), 400
-        event = store.update_position(session, lat, lon)
-        return jsonify(session_json(session, event=event))
+        now = datetime.now(ZURICH_TZ)
+        event = store.update_position(session, lat, lon, now=now)
+        return jsonify(session_json(session, now, event=event))
 
     @app.post("/api/session/<session_id>/reject")
     def reject(session_id: str):
         session = store.get(session_id)
         if session is None:
             return jsonify(error="session not found"), 404
-        event = store.reject_current(session)
-        return jsonify(session_json(session, event=event))
+        now = datetime.now(ZURICH_TZ)
+        event = store.reject_current(session, now=now)
+        return jsonify(session_json(session, now, event=event))
 
     @app.post("/api/session/<session_id>/confirm")
     def confirm(session_id: str):
@@ -140,15 +151,16 @@ def create_app(store: SessionStore | None = None) -> Flask:
         if session is None:
             return jsonify(error="session not found"), 404
         event = store.confirm_current(session)
-        return jsonify(session_json(session, event=event))
+        return jsonify(session_json(session, datetime.now(ZURICH_TZ), event=event))
 
     @app.post("/api/session/<session_id>/expand")
     def expand(session_id: str):
         session = store.get(session_id)
         if session is None:
             return jsonify(error="session not found"), 404
-        store.expand_radius(session)
-        return jsonify(session_json(session, event="expanded"))
+        now = datetime.now(ZURICH_TZ)
+        store.expand_radius(session, now=now)
+        return jsonify(session_json(session, now, event="expanded"))
 
     return app
 

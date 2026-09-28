@@ -32,6 +32,14 @@ Known simplifications, not modeled:
 """
 
 from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
+# The rule is defined in terms of Zurich local hours -- every "now" fed
+# into it (here and in duration_filter.py) needs to be datetime.now(ZURICH_TZ),
+# not a naive datetime.now(), which is whatever timezone the *server*
+# happens to run in (UTC on Cloud Run) and would silently misjudge which
+# rule window applies.
+ZURICH_TZ = ZoneInfo("Europe/Zurich")
 
 MORNING_START = time(8, 0)
 MORNING_END = time(11, 30)

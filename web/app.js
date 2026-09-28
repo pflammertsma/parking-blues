@@ -52,6 +52,11 @@ function selectedZone() {
   return document.querySelector('input[name="zone"]:checked').value;
 }
 
+function selectedDuration() {
+  const value = $("duration").value;
+  return value ? parseInt(value, 10) : null;
+}
+
 function formatDuration(segment) {
   if (segment.zone_type === "blue") {
     if (!segment.legal_until) {
@@ -149,6 +154,10 @@ function render(data) {
   renderSegment($("current"), data.current);
   renderMap(data);
 
+  $("duration-readout").textContent = data.preferred_duration_minutes
+    ? `Only showing spots you can stay at for at least ${data.preferred_duration_minutes} min, right now.`
+    : "";
+
   const exhausted = data.state === "exhausted";
   $("exhausted").hidden = !exhausted;
 
@@ -192,9 +201,10 @@ $("use-geolocation").addEventListener("click", () => {
 $("start").addEventListener("click", async () => {
   const { lat, lng } = originMarker.getLatLng();
   const zone = selectedZone();
+  const duration_minutes = selectedDuration();
   const data = await api("/api/session", {
     method: "POST",
-    body: JSON.stringify({ lat, lon: lng, zone }),
+    body: JSON.stringify({ lat, lon: lng, zone, duration_minutes }),
   });
   sessionId = data.session_id;
   $("setup").hidden = true;
@@ -257,6 +267,7 @@ $("reset").addEventListener("click", () => {
   }
   originMarker.dragging.enable();
   $("log").innerHTML = "";
+  $("duration-readout").textContent = "";
   $("exhausted").hidden = true;
   $("session").hidden = true;
   $("setup").hidden = false;

@@ -7,9 +7,12 @@ real GPS -- see tests/test_session.py.
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 
+from .blue_zone_rules import ZURICH_TZ
 from .clustering import build_ranked_clusters
+from .duration_filter import segment_supports_duration
 from .geo import haversine_m
 from .models import ParkingSegment, ZoneType
 
@@ -72,6 +75,11 @@ class ParkingSession:
     # you're moving -- see the segment_json "distance_from_you_m" field.
     last_lat: float
     last_lon: float
+    # None means no preference -- every candidate query re-applies this
+    # (see SessionStore._candidates_for), since whether a spot satisfies a
+    # given duration is time-of-day dependent for blue zone and can change
+    # between requests (see backend/duration_filter.py).
+    preferred_duration_minutes: int | None = None
     rejected_ids: set[str] = field(default_factory=set)
     # Kept alongside rejected_ids (which is also used to exclude these from
     # future candidate queries) so the client can still show where the
@@ -189,10 +197,15 @@ class SessionStore:
     def _candidates_for(
         self, zone_filter: set[ZoneType], radius_m: float, origin_lat: float,
         origin_lon: float, exclude_ids: set[str],
+        preferred_duration_minutes: int | None, now: datetime,
     ) -> list[list[ParkingSegment]]:
         in_scope = []
         for seg in self._all_segments:
             if seg.id in exclude_ids or not seg.matches(zone_filter):
+                continue
+            if preferred_duration_minutes is not None and not segment_supports_duration(
+                seg, preferred_duration_minutes, now
+            ):
                 continue
             distance_m = haversine_m(origin_lat, origin_lon, seg.lat, seg.lon)
             if distance_m <= radius_m:
@@ -208,9 +221,13 @@ class SessionStore:
         origin_lon: float,
         zone_filter: set[ZoneType],
         radius_m: float = DEFAULT_INITIAL_RADIUS_M,
+        preferred_duration_minutes: int | None = None,
+        now: datetime | None = None,
     ) -> ParkingSession:
+        now = now or datetime.now(ZURICH_TZ)
         candidates = self._candidates_for(
-            zone_filter, radius_m, origin_lat, origin_lon, exclude_ids=set()
+            zone_filter, radius_m, origin_lat, origin_lon, exclude_ids=set(),
+            preferred_duration_minutes=preferred_duration_minutes, now=now,
         )
         session = ParkingSession(
             id=str(uuid.uuid4()),
@@ -221,17 +238,19 @@ class SessionStore:
             candidates=candidates,
             last_lat=origin_lat,
             last_lon=origin_lon,
+            preferred_duration_minutes=preferred_duration_minutes,
             state=SessionState.SEARCHING if candidates else SessionState.EXHAUSTED,
         )
         self._sessions[session.id] = session
         if session.state == SessionState.EXHAUSTED:
-            self._auto_expand_while_exhausted(session)
+            self._auto_expand_while_exhausted(session, now)
         return session
 
     def get(self, session_id: str) -> ParkingSession | None:
         return self._sessions.get(session_id)
 
-    def expand_radius(self, session: ParkingSession) -> ParkingSession:
+    def expand_radius(self, session: ParkingSession, now: datetime | None = None) -> ParkingSession:
+        now = now or datetime.now(ZURICH_TZ)
         session.radius_m += RADIUS_EXPANSION_STEP_M
         session.candidates = self._candidates_for(
             session.zone_filter,
@@ -239,6 +258,8 @@ class SessionStore:
             session.origin_lat,
             session.origin_lon,
             exclude_ids=session.rejected_ids,
+            preferred_duration_minutes=session.preferred_duration_minutes,
+            now=now,
         )
         session.closest_approach_m = {}
         session.state = (
@@ -246,19 +267,20 @@ class SessionStore:
         )
         return session
 
-    def _auto_expand_while_exhausted(self, session: ParkingSession) -> None:
+    def _auto_expand_while_exhausted(self, session: ParkingSession, now: datetime) -> None:
         """A driver in motion can't just be told "nothing found" and left
         there -- keep widening the radius, up to MAX_RADIUS_M, until there's
         something to suggest again (or the cap is reached, for a genuinely
         sparse/fully-rejected area).
         """
         while session.state == SessionState.EXHAUSTED and session.radius_m < MAX_RADIUS_M:
-            self.expand_radius(session)
+            self.expand_radius(session, now=now)
 
-    def reject_current(self, session: ParkingSession) -> str:
+    def reject_current(self, session: ParkingSession, now: datetime | None = None) -> str:
+        now = now or datetime.now(ZURICH_TZ)
         session.reject_current()
         if session.state == SessionState.EXHAUSTED:
-            self._auto_expand_while_exhausted(session)
+            self._auto_expand_while_exhausted(session, now)
             if session.state == SessionState.SEARCHING:
                 return "expanded"
         return "rejected"
@@ -267,7 +289,9 @@ class SessionStore:
         session.confirm_current()
         return "parked"
 
-    def _pull_in_local_cluster(self, session: ParkingSession, lat: float, lon: float) -> bool:
+    def _pull_in_local_cluster(
+        self, session: ParkingSession, lat: float, lon: float, now: datetime
+    ) -> bool:
         """Called when the driver's current cluster just ran out, or when
         they've simply drifted far from their current target (e.g. drove
         straight out of the whole search area). Either way, the fallback
@@ -283,7 +307,8 @@ class SessionStore:
             seg.id for cluster in session.candidates for seg in cluster
         }
         local_clusters = self._candidates_for(
-            session.zone_filter, DEFAULT_INITIAL_RADIUS_M, lat, lon, exclude_ids=known_ids
+            session.zone_filter, DEFAULT_INITIAL_RADIUS_M, lat, lon, exclude_ids=known_ids,
+            preferred_duration_minutes=session.preferred_duration_minutes, now=now,
         )
         if not local_clusters:
             return False
@@ -294,7 +319,10 @@ class SessionStore:
         session.closest_approach_m = {}
         return True
 
-    def update_position(self, session: ParkingSession, lat: float, lon: float) -> str:
+    def update_position(
+        self, session: ParkingSession, lat: float, lon: float, now: datetime | None = None
+    ) -> str:
+        now = now or datetime.now(ZURICH_TZ)
         cluster_before = (
             {s.id for s in session.candidates[0]} if session.candidates else set()
         )
@@ -310,12 +338,12 @@ class SessionStore:
             )
             if (
                 (moved_to_new_cluster or drifted_far_from_target)
-                and self._pull_in_local_cluster(session, lat, lon)
+                and self._pull_in_local_cluster(session, lat, lon, now)
             ):
                 event = "retargeted"
 
         if session.state == SessionState.EXHAUSTED:
-            self._auto_expand_while_exhausted(session)
+            self._auto_expand_while_exhausted(session, now)
             if session.state == SessionState.SEARCHING:
                 return "expanded"
         return event
