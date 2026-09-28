@@ -49,35 +49,39 @@ class ParkingSession:
     zone_filter: set[ZoneType]
     radius_m: float
     candidates: list[ParkingSegment]
-    index: int = 0
     rejected_ids: set[str] = field(default_factory=set)
     # Kept alongside rejected_ids (which is also used to exclude these from
     # future candidate queries) so the client can still show where the
     # driver already looked and found nothing -- radius expansion rebuilds
     # `candidates` from scratch and would otherwise drop them.
     rejected: list[ParkingSegment] = field(default_factory=list)
-    closest_approach_m: float | None = None
+    # Closest distance ever recorded to each candidate, keyed by segment id
+    # -- tracked per-segment (not just for whichever one is "current") so
+    # that in a dense cluster of real-world segments a few meters apart,
+    # passing several of them in a row still rejects each one individually
+    # instead of only ever tracking whichever one the ranking currently
+    # favors (which reshuffles too fast for any single approach/depart
+    # cycle to complete against real, tightly-packed data).
+    closest_approach_m: dict[str, float] = field(default_factory=dict)
     state: SessionState = SessionState.SEARCHING
 
     @property
     def current(self) -> ParkingSegment | None:
-        if self.state != SessionState.SEARCHING or self.index >= len(self.candidates):
+        if self.state != SessionState.SEARCHING or not self.candidates:
             return None
-        return self.candidates[self.index]
+        return self.candidates[0]
 
     @property
     def upcoming(self) -> list[ParkingSegment]:
         """Remaining candidates after the current one, for display."""
-        return self.candidates[self.index + 1 :]
+        return self.candidates[1:]
 
     def _reject(self, segment: ParkingSegment) -> None:
         self.rejected_ids.add(segment.id)
         self.rejected.append(segment)
-
-    def _advance(self) -> None:
-        self.index += 1
-        self.closest_approach_m = None
-        if self.index >= len(self.candidates):
+        self.closest_approach_m.pop(segment.id, None)
+        self.candidates.remove(segment)
+        if not self.candidates:
             self.state = SessionState.EXHAUSTED
 
     def reject_current(self) -> None:
@@ -85,26 +89,10 @@ class ParkingSession:
         if current is None:
             return
         self._reject(current)
-        self._advance()
 
     def confirm_current(self) -> None:
         if self.current is not None:
             self.state = SessionState.PARKED
-
-    def _retarget_by_distance(self, lat: float, lon: float) -> bool:
-        """Re-sort the not-yet-visited candidates by live distance from the
-        driver, nearest first, so a suggestion that's drifting farther away
-        stops being the top pick instead of staying "current" just because
-        it was closest back at the search origin. Returns True if the top
-        suggestion actually changed.
-        """
-        remaining = self.candidates[self.index :]
-        remaining.sort(key=lambda s: haversine_m(lat, lon, s.lat, s.lon))
-        changed = remaining[0].id != self.candidates[self.index].id
-        self.candidates[self.index :] = remaining
-        if changed:
-            self.closest_approach_m = None
-        return changed
 
     def update_position(self, lat: float, lon: float) -> str:
         """Feed a live position update. Returns one of:
@@ -114,28 +102,38 @@ class ParkingSession:
         moving (not just once they stop), so both auto-rejection and
         retargeting react smoothly instead of needing a discrete drop.
         """
-        current = self.current
-        if current is None:
+        if self.current is None:
             return "exhausted"
 
-        distance_m = haversine_m(lat, lon, current.lat, current.lon)
-        if self.closest_approach_m is None or distance_m < self.closest_approach_m:
-            self.closest_approach_m = distance_m
+        previous_current_id = self.candidates[0].id
 
-        got_close_enough = self.closest_approach_m <= APPROACH_THRESHOLD_M
-        moved_away_again = distance_m >= self.closest_approach_m + DEPART_MARGIN_M
-        if got_close_enough and moved_away_again:
-            self._reject(current)
-            self._advance()
-            event = "exhausted" if self.state == SessionState.EXHAUSTED else "auto_rejected"
-        else:
-            event = "tracking"
+        # Update every remaining candidate's closest-approach independently,
+        # then reject any the driver got within APPROACH_THRESHOLD_M of and
+        # has now pulled at least DEPART_MARGIN_M farther away from -- not
+        # just whichever one happens to be ranked "current" right now.
+        to_reject = []
+        for seg in self.candidates:
+            distance_m = haversine_m(lat, lon, seg.lat, seg.lon)
+            closest = self.closest_approach_m.get(seg.id)
+            if closest is None or distance_m < closest:
+                closest = distance_m
+                self.closest_approach_m[seg.id] = closest
+            if closest <= APPROACH_THRESHOLD_M and distance_m >= closest + DEPART_MARGIN_M:
+                to_reject.append(seg)
 
-        if self.state == SessionState.SEARCHING and self._retarget_by_distance(lat, lon):
-            if event == "tracking":
-                event = "retargeted"
+        for seg in to_reject:
+            self._reject(seg)
 
-        return event
+        if self.state != SessionState.SEARCHING:
+            return "exhausted"
+
+        self.candidates.sort(key=lambda s: haversine_m(lat, lon, s.lat, s.lon))
+
+        if to_reject:
+            return "auto_rejected"
+        if self.candidates[0].id != previous_current_id:
+            return "retargeted"
+        return "tracking"
 
 
 class SessionStore:
@@ -199,8 +197,7 @@ class SessionStore:
             session.origin_lon,
             exclude_ids=session.rejected_ids,
         )
-        session.index = 0
-        session.closest_approach_m = None
+        session.closest_approach_m = {}
         session.state = (
             SessionState.SEARCHING if session.candidates else SessionState.EXHAUSTED
         )

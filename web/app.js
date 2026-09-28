@@ -23,7 +23,7 @@ L.tileLayer(
 
 const originMarker = L.marker([DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lon], {
   draggable: true,
-}).addTo(map).bindTooltip("Start", { permanent: true, direction: "top" });
+}).addTo(map).bindTooltip("Destination", { permanent: true, direction: "top" });
 
 const youIcon = L.divIcon({
   className: "you-marker",
@@ -36,7 +36,7 @@ let candidateLayer = L.layerGroup().addTo(map);
 
 function updateOriginReadout() {
   const { lat, lng } = originMarker.getLatLng();
-  $("origin-readout").textContent = `Start: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  $("origin-readout").textContent = `Destination: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
 
 originMarker.on("dragend", updateOriginReadout);
