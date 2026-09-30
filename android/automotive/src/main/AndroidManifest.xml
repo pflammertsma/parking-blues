@@ -43,15 +43,6 @@
             android:name="com.android.automotive"
             android:resource="@xml/automotive_app_desc" />
 
-        <!-- Required by the Maps SDK for Android (play-services-maps),
-             used to render MapSearchScreen's custom map. Value comes from
-             android/local.properties (gitignored), injected via
-             manifestPlaceholders in build.gradle.kts; see that file's
-             comment for how the key is restricted. -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${mapsApiKey}" />
-
         <!-- The actual launcher entry point on Automotive OS. It hosts
              ParkingCarAppService's Screens/Templates directly; there is
              deliberately no separate custom Activity here. -->

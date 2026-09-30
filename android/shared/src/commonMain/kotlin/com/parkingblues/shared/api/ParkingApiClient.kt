@@ -3,7 +3,9 @@ package com.parkingblues.shared.api
 import com.parkingblues.shared.model.SessionSnapshot
 import com.parkingblues.shared.model.ZoneFilter
 import io.ktor.client.HttpClient
+import io.ktor.client.HttpClientConfig
 import io.ktor.client.call.body
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
@@ -28,6 +30,15 @@ private data class CreateSessionRequest(
 @Serializable
 private data class PositionRequest(val lat: Double, val lon: Double)
 
+private val configureClient: HttpClientConfig<*>.() -> Unit = {
+    install(ContentNegotiation) {
+        json(Json { ignoreUnknownKeys = true })
+    }
+    install(Logging) {
+        level = LogLevel.INFO
+    }
+}
+
 /**
  * Thin wrapper over the exact same JSON API backend/app.py serves to the
  * web MVP (web/app.js calls the same five endpoints). No client-side
@@ -35,15 +46,15 @@ private data class PositionRequest(val lat: Double, val lon: Double)
  * decision in the project plan: the algorithm stays server-tunable, this
  * is just transport + DTOs.
  */
-class ParkingApiClient(private val baseUrl: String) {
-    private val http = HttpClient {
-        install(ContentNegotiation) {
-            json(Json { ignoreUnknownKeys = true })
-        }
-        install(Logging) {
-            level = LogLevel.INFO
-        }
-    }
+class ParkingApiClient private constructor(
+    private val baseUrl: String,
+    private val http: HttpClient,
+) {
+    constructor(baseUrl: String) : this(baseUrl, HttpClient(block = configureClient))
+
+    /** Test-only: inject a fake/mock engine (e.g. Ktor's MockEngine) instead
+     *  of hitting a real network -- see shared/src/commonTest. */
+    constructor(baseUrl: String, engine: HttpClientEngine) : this(baseUrl, HttpClient(engine, configureClient))
 
     suspend fun createSession(
         lat: Double,

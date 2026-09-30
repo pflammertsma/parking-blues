@@ -33,6 +33,6 @@ dependencies {
     api(libs.androidx.car.app)
     api(libs.androidx.lifecycle.runtime.ktx)
     api(libs.play.services.location)
-    api(libs.play.services.maps)
+    api(libs.osmdroid.android)
     api(libs.kotlinx.coroutines.core)
 }

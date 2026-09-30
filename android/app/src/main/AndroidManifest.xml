@@ -40,14 +40,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Required by the Maps SDK for Android (play-services-maps), used
-             to render MapSearchScreen's custom map. Value comes from
-             android/local.properties (gitignored); see that file's comment
-             for how the key is restricted. -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${mapsApiKey}" />
-
         <!-- Android Auto's own template-capability declaration (distinct
              meta-data key from :automotive's com.android.automotive, but
              the same automotive_app_desc.xml content). Without this, the

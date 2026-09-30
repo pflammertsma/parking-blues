@@ -11,7 +11,7 @@ androidx-activity-compose = "1.9.3"
 androidx-lifecycle = "2.8.6"
 androidx-car-app = "1.4.0"
 play-services-location = "21.3.0"
-play-services-maps = "19.2.0"
+osmdroid = "6.1.20"
 
 [libraries]
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
@@ -23,6 +23,8 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
 ktor-client-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core-ktx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity-compose" }
@@ -32,7 +34,7 @@ androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-
 androidx-car-app = { module = "androidx.car.app:app", version.ref = "androidx-car-app" }
 androidx-car-app-automotive = { module = "androidx.car.app:app-automotive", version.ref = "androidx-car-app" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "play-services-location" }
-play-services-maps = { module = "com.google.android.gms:play-services-maps", version.ref = "play-services-maps" }
+osmdroid-android = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroid" }
 
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
 compose-ui = { module = "androidx.compose.ui:ui" }

@@ -61,16 +61,20 @@ the code, plus the location helpers both platforms need:
   shown here) and feeds continuous GPS into the shared repository.
 - `car/ZoneSelectScreen.kt` — `ListTemplate`, one row per `ZoneFilter`.
 - `car/MapSearchScreen.kt` — the active search screen: a **self-drawn**
-  map (Maps SDK for Android, via `AppManager.setSurfaceCallback` + a
+  map (osmdroid, via `AppManager.setSurfaceCallback` + a
   `VirtualDisplay`/`Presentation` hosting a `MapView`) rendered through
   `MapWithContentTemplate`, with a full-width `ListTemplate` of ranked
   candidates alongside it. Draws distinct markers `PlaceListMapTemplate`
   can't: a "you" pin, the destination pin, dimmed rejected spots, and the
   current target highlighted — matching `web/app.js`'s map exactly (see
   `SessionSnapshot.you`/`.origin`/`.rejected`). **Confirmed working
-  end-to-end on a real phone via Android Auto/DHU**; does *not* currently
-  work on the AAOS emulator (see AAOS notes below) — that's an emulator
-  environment limitation, not a code issue.
+  end-to-end both on a real phone via Android Auto/DHU and on both AAOS
+  emulator tiers** — osmdroid was a deliberate switch away from the Maps
+  SDK for Android specifically because the latter's map rendering depends
+  on Play Services' Dynamite module delivery, which Google's backend
+  doesn't serve to this device class at all (confirmed via logcat, see the
+  "Map rendering" note below); osmdroid fetches tiles over plain HTTP
+  instead, so it has no such dependency.
 - `car/SearchScreen.kt` — the original, simpler search screen
   (`PlaceListMapTemplate`, the host's own rendered map) kept as a working
   fallback/reference; not wired into `ParkingCarSession`/`ZoneSelectScreen`
@@ -195,17 +199,18 @@ way to confirm this specific failure mode again if it recurs.
   process); `automotive/` has no UI for it yet and stays on the default.
   Per-install (`SharedPreferences`), so `app/` and `automotive/` each
   remember their own choice independently.
-- **Maps SDK for Android API key**: `local.properties` (gitignored) holds
-  `mapsApiKey=...`, injected into both `app/` and `automotive/` manifests
-  via `manifestPlaceholders`. Restricted (GCP Console → APIs & Services →
-  Credentials, or `gcloud services api-keys create`) to the Maps SDK for
-  Android API only, plus `com.parkingblues.app` + the debug keystore's
-  SHA-1 fingerprint (`keytool -list -v -keystore ~/.android/debug.keystore
-  -alias androiddebugkey -storepass android -keypass android`). A release
-  build needs its own key restricted to the release signing fingerprint
-  instead of this one. The `maps-android-backend.googleapis.com` API must
-  be enabled on the GCP project (`gcloud services enable
-  maps-android-backend.googleapis.com`).
+- **Map rendering**: osmdroid, not the Maps SDK for Android -- confirmed via
+  live logcat on both Android Automotive OS emulator tiers (Play Store and
+  Google-APIs-only, the latter signed into a real Google account) that
+  Play's Dynamite backend serves other dynamite modules fine
+  (`googlecertificates` loads successfully) but returns "Unknown dynamite
+  feature" specifically for `maps_dynamite`/`maps_core_dynamite`. That's a
+  server-side eligibility gap for this device class, not a local config
+  problem, so no API key or Play Store dependency can fix it. osmdroid
+  fetches raster tiles over plain HTTP instead (no Play Services involved
+  at all), using the same CartoDB Positron basemap as `web/app.js` (see
+  `car/OsmdroidConfig.kt`) -- confirmed rendering correctly on both emulator
+  tiers.
 
 ## Build & run
 
@@ -222,8 +227,9 @@ adb shell am force-stop com.parkingblues.app   # if reinstalling over a running 
 ```
 
 On an AAOS AVD (e.g. `Automotive_Portrait_API_34-ext9` or
-`Automotive_1024p_landscape_API_32`). See "AAOS testing notes" below —
-`MapSearchScreen`'s self-drawn map does not currently work here.
+`Automotive_1024p_landscape_API_32`) — `MapSearchScreen`'s self-drawn map
+now renders correctly on both tiers (see "AAOS testing notes" below for
+why the switch to osmdroid was necessary).
 
 ### Android Auto (real phone + Desktop Head Unit)
 
@@ -276,20 +282,26 @@ re-add whatever's missing, no need to restart the phone itself.
   `SecurityException: ... requires non-user build` confirms a locked-down
   "user" (production-signed) image with no shell-level
   distraction-optimization bypass — expected, not a setup bug.
-- **`MapSearchScreen`'s self-drawn map does not currently work on the AAOS
-  emulator tested here**, even fully signed into a Google account:
-  `MapsInitializer` fails with `DynamiteModule$LoadingException: No
-  acceptable module com.google.android.gms.maps_dynamite found. Local
-  version is 0 and remote version is 0` / `ProviderHelper: Unknown
-  dynamite feature maps_dynamite` — Play Store on this AVD doesn't carry
-  the Maps rendering module in its catalog at all, not a download/timing
-  issue (confirmed by retrying after a full Play-services app update).
-  Everything upstream of that (the `Surface`/`VirtualDisplay`/
-  `Presentation` plumbing, the API key, `MapWithContentTemplate` itself)
-  is confirmed working, since the exact same code renders a real map on
-  Android Auto via a physical phone. Use `SearchScreen`
-  (`PlaceListMapTemplate`, no custom rendering) for AAOS-emulator testing
-  instead, or test on real AAOS hardware if/when available.
+- **`MapSearchScreen`'s self-drawn map originally used the Maps SDK for
+  Android and did not work on the AAOS emulator**, even fully signed into
+  a Google account: `MapsInitializer` failed with
+  `DynamiteModule$LoadingException: No acceptable module
+  com.google.android.gms.maps_dynamite found. Local version is 0 and
+  remote version is 0` / `ProviderHelper: Unknown dynamite feature
+  maps_dynamite`. Confirmed via logcat on both the Play-Store and
+  Google-APIs-only emulator tiers that Play's Dynamite backend serves
+  *other* dynamite modules fine (`googlecertificates` loads successfully)
+  but returns "Unknown dynamite feature" specifically for
+  `maps_dynamite`/`maps_core_dynamite` — a server-side eligibility gap for
+  this device class, not a download/timing issue (confirmed by retrying
+  after a full Play-services update, and by signing into a real Google
+  account on the Play-Store tier specifically to rule out an auth gap).
+  Fixed by switching to osmdroid (`car/OsmdroidConfig.kt`), which fetches
+  raster tiles over plain HTTP with no Play Services/Dynamite dependency
+  at all — confirmed rendering correctly on both emulator tiers after the
+  switch. `SearchScreen` (`PlaceListMapTemplate`, no custom rendering)
+  remains as a simpler fallback/reference but is no longer the only
+  AAOS-emulator-testable option.
 - The recurring build failure this module hit repeatedly: `--` inside an
   XML comment (`<!-- ... -- ... -->`) is invalid per the XML spec and
   fails AAPT2 with `The string "--" is not permitted within comments`.

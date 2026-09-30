@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Converted from assets/destination.svg (474x474 viewBox): just the pin
+     shape (path id="rect3" in the source), not the spelled-out
+     "Destination" word also in that file (path id="text3"); rendering
+     an entire word as a map marker glyph wouldn't be legible at marker
+     scale, the pin alone is the actual icon. pathData and the translate
+     transform are copied verbatim from the source, same approach as
+     ic_zone_blue.xml/ic_zone_white.xml. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="474"
+    android:viewportHeight="474">
+    <group
+        android:translateX="-1.0961151"
+        android:translateY="18.238238">
+        <path
+            android:fillColor="#000000"
+            android:strokeColor="#000000"
+            android:strokeWidth="22.6772"
+            android:pathData="M 208.81682,142.52539 V 330.35156 H 128.72112 L 238.09612,439.72656 347.47112,330.35156 H 267.37541 V 142.52539 Z" />
+    </group>
+</vector>

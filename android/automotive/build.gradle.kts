@@ -1,18 +1,9 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
 }
-
-// Read from android/local.properties (gitignored) rather than committing a
-// key to source -- see the comment there for how it's restricted.
-val localProperties = Properties().apply {
-    val file = rootProject.file("local.properties")
-    if (file.exists()) file.inputStream().use { load(it) }
-}
-val mapsApiKey: String = localProperties.getProperty("mapsApiKey", "")
 
 android {
     namespace = "com.parkingblues.automotive"
@@ -28,7 +19,6 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1"
-        manifestPlaceholders["mapsApiKey"] = mapsApiKey
     }
 
     buildTypes {

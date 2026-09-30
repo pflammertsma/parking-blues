@@ -2,6 +2,7 @@ package com.parkingblues.app
 
 import android.app.Application
 import com.parkingblues.car.HasParkingRepository
+import com.parkingblues.car.car.configureOsmdroid
 import com.parkingblues.shared.ParkingSessionRepository
 import com.parkingblues.shared.api.ParkingApiClient
 
@@ -17,6 +18,7 @@ class ParkingBluesApp : Application(), HasParkingRepository {
 
     override fun onCreate() {
         super.onCreate()
+        configureOsmdroid(this)
         repository = ParkingSessionRepository(ParkingApiClient(BuildConfig.BASE_URL))
     }
 }

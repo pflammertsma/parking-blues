@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Converted from assets/white-zone.svg (474x474 viewBox) verbatim; see
+     ic_zone_blue.xml's comment. This one's background rect has both a fill
+     and a stroke in the source (white fill, blue border), which Android's
+     path element supports directly on the same path. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="474"
+    android:viewportHeight="474">
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#268BCC"
+        android:strokeWidth="22.67716535"
+        android:pathData="M 0,0 H 474 V 474 H 0 Z" />
+    <group
+        android:scaleX="2.0930654"
+        android:scaleY="2.0930654"
+        android:translateX="-79.282249"
+        android:translateY="-153.73804">
+        <path
+            android:fillColor="#268BCC"
+            android:pathData="M 116.7895,250.72353 V 122.75478 h 54 q 14.4375,-0.0937 24.1875,9.84375 9.65625,10.21875 9.5625,24.375 v 4.21875 q 0,12.84375 -8.4375,22.59375 -10.21875,11.53125 -25.40625,11.4375 H 140.227 v 55.5 z m 23.4375,-76.78125 h 27.375 q 6,0 9.65625,-3.5625 3.84375,-3.75 3.84375,-9.1875 v -4.21875 q 0,-5.25 -3.84375,-9.09375 -3.75,-3.84375 -9.5625,-3.84375 H 140.227 Z" />
+    </group>
+</vector>

@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": ["-m", "backend.app"],
       "port": 5000
+    },
+    {
+      "name": "cluster-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "C:/Users/pflam/AppData/Local/Temp/claude/C--Users-pflam-StudioProjects-parking-blues/6e4fd173-2cfd-4c81-bd02-61f2f7a79d3d/scratchpad/cluster-preview"],
+      "port": 8765
     }
   ]
 }
