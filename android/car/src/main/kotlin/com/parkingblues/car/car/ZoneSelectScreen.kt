@@ -25,7 +25,7 @@ class ZoneSelectScreen(
         for (zone in ZoneFilter.entries) {
             items.addItem(
                 Row.Builder()
-                    .setTitle(zone.name.lowercase().replaceFirstChar { it.uppercase() } + " zone")
+                    .setTitle(zone.name.lowercase().replaceFirstChar { it.uppercase() } + " zones")
                     .setOnClickListener {
                         setTestLocationEnabled(carContext, false)
                         startSearch(zone)
@@ -36,7 +36,7 @@ class ZoneSelectScreen(
 
         items.addItem(
             Row.Builder()
-                .setTitle("Simulate Test Drive (Zurich)")
+                .setTitle("Simulate test drive (Zurich)")
                 .addText("Live 15 km/h test drive with car marker & auto-rejection")
                 .setOnClickListener {
                     setTestLocationEnabled(carContext, true)

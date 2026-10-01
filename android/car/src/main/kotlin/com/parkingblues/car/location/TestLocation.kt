@@ -19,15 +19,27 @@ val DEFAULT_ORIGIN: Pair<Double, Double> = 47.379198 to 8.531307
  * spots on Neugasse, Josefstrasse, and surrounding streets.
  */
 val SIMULATED_ROUTE_WAYPOINTS: List<Pair<Double, Double>> = listOf(
-    47.379500 to 8.531150, // Start north of origin, heading SSE
-    47.378480 to 8.531600, // Pass stalls zh-251525, zh-208003
-    47.377650 to 8.531750, // Pass stalls zh-251935, zh-226865
-    47.377700 to 8.532800, // Turn ENE, pass stalls zh-247039, zh-223575
-    47.378700 to 8.532700, // Turn North along parallel street
-    47.379500 to 8.531150, // Loop back to start
+    47.378881 to 8.531066, // Lagerstrasse / Kanonengasse (heading SE)
+    47.378542 to 8.531642, // Lagerstrasse past stalls
+    47.378233 to 8.532135, // Lagerstrasse / Eisgasse past stalls
+    47.377585 to 8.533166, // Lagerstrasse / Freischuetzgasse
+    47.377482 to 8.533186, // Turn onto Freischuetzgasse
+    47.376914 to 8.532383, // Freischuetzgasse / Militaerstrasse
+    47.377283 to 8.531853, // Militaerstrasse heading NW
+    47.377659 to 8.531307, // Militaerstrasse / Eisgasse (past origin)
+    47.378297 to 8.530397, // Militaerstrasse / Kanonengasse
+    47.378558 to 8.530718, // Kanonengasse heading NE
+    47.378881 to 8.531066, // Back to start of loop
 )
 
 fun getSimulatedRouteStart(): Pair<Double, Double> = SIMULATED_ROUTE_WAYPOINTS.first()
+
+fun getSimulatedRouteInitialBearing(): Float = calculateBearingDegrees(
+    SIMULATED_ROUTE_WAYPOINTS[0].first,
+    SIMULATED_ROUTE_WAYPOINTS[0].second,
+    SIMULATED_ROUTE_WAYPOINTS[1].first,
+    SIMULATED_ROUTE_WAYPOINTS[1].second,
+)
 
 val TEST_LOCATION: Pair<Double, Double> = getSimulatedRouteStart()
 
@@ -85,6 +97,7 @@ private const val PREFS_NAME = "parking_blues_debug"
 private const val KEY_USE_TEST_LOCATION = "use_test_location"
 
 val testModeFlow = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)
+val testModeTrigger = kotlinx.coroutines.flow.MutableStateFlow(0)
 
 /**
  * Per-install (SharedPreferences), so :app/Android Auto and :automotive
@@ -102,6 +115,7 @@ fun isTestLocationEnabled(context: Context): Boolean {
 
 fun setTestLocationEnabled(context: Context, enabled: Boolean) {
     testModeFlow.value = enabled
+    testModeTrigger.value++
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         .edit()
         .putBoolean(KEY_USE_TEST_LOCATION, enabled)

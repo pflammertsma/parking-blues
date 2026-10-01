@@ -39,7 +39,8 @@ data class GpsFix(val lat: Double, val lon: Double, val bearingDegrees: Float?)
 @SuppressLint("MissingPermission")
 fun locationUpdates(context: Context): Flow<GpsFix> {
     isTestLocationEnabled(context)
-    return testModeFlow.flatMapLatest { isTest ->
+    return kotlinx.coroutines.flow.combine(testModeFlow, testModeTrigger) { isTest, _ -> isTest }
+        .flatMapLatest { isTest ->
         if (isTest == true) {
             flow {
                 val route = getSimulatedRouteSteps()

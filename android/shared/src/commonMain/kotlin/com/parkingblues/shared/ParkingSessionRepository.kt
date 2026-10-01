@@ -17,6 +17,9 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
     private val _session = MutableStateFlow<SessionSnapshot?>(null)
     val session: StateFlow<SessionSnapshot?> = _session.asStateFlow()
 
+    private val _bearing = MutableStateFlow<Float?>(null)
+    val bearing: StateFlow<Float?> = _bearing.asStateFlow()
+
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
@@ -25,14 +28,17 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
         lon: Double,
         zone: ZoneFilter,
         durationMinutes: Int? = null,
+        bearing: Float? = null,
     ) {
+        if (bearing != null) _bearing.value = bearing
         runCatching { api.createSession(lat, lon, zone, durationMinutes) }
             .onSuccess { _session.value = it; _error.value = null }
             .onFailure { _error.value = it.message ?: "Failed to start search" }
     }
 
     /** Called continuously from live location updates -- see LocationSource on Android. */
-    suspend fun updatePosition(lat: Double, lon: Double) {
+    suspend fun updatePosition(lat: Double, lon: Double, bearing: Float? = null) {
+        if (bearing != null) _bearing.value = bearing
         val id = _session.value?.sessionId ?: return
         runCatching { api.updatePosition(id, lat, lon) }
             .onSuccess { _session.value = it }
@@ -63,6 +69,7 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
     /** Back to the pristine pre-search state -- mirrors the web UI's Reset button. */
     fun reset() {
         _session.value = null
+        _bearing.value = null
         _error.value = null
     }
 }
