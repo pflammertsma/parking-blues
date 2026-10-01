@@ -123,28 +123,41 @@ class MapSearchScreen(
     // subscription rather than plumbed through ParkingSessionRepository.
     // Null when unavailable (device stationary, or the fixed test-location
     // point, which has no meaningful heading) -- shown as a plain dot then.
-    private var lastBearing: Float? = null
+  private var lastBearing: Float? = null
+  private var lastSummaryTitle: String? = null
+  private var lastSummarySubtitle: String? = null
+  private var lastState: SessionState? = null
 
-    init {
-        carContext.getCarService(AppManager::class.java).setSurfaceCallback(this)
-        lifecycleScope.launch {
-            repository.session.collect {
-                invalidate()
-                it?.let { snapshot -> renderMarkers(snapshot) }
-            }
+  init {
+    carContext.getCarService(AppManager::class.java).setSurfaceCallback(this)
+    lifecycleScope.launch {
+      repository.session.collect { snapshot ->
+        if (snapshot != null) {
+          val (title, subtitle) = computeSummaryStrings(snapshot)
+          if (title != lastSummaryTitle || subtitle != lastSummarySubtitle || snapshot.state != lastState) {
+            lastSummaryTitle = title
+            lastSummarySubtitle = subtitle
+            lastState = snapshot.state
+            invalidate()
+          }
+          renderMarkers(snapshot)
+        } else {
+          invalidate()
         }
-        lifecycleScope.launch {
-            repository.error.collect { invalidate() }
-        }
-        lifecycleScope.launch {
-            repository.bearing.collect { bearing ->
-                if (bearing != null) {
-                    lastBearing = bearing
-                    repository.session.value?.let { renderMarkers(it) }
-                }
-            }
-        }
+      }
     }
+    lifecycleScope.launch {
+      repository.error.collect { invalidate() }
+    }
+    lifecycleScope.launch {
+      repository.bearing.collect { bearing ->
+        if (bearing != null) {
+          lastBearing = bearing
+          repository.session.value?.let { renderMarkers(it) }
+        }
+      }
+    }
+  }
 
     // -- SurfaceCallback: draw our own map onto the host-provided Surface --
 
@@ -304,36 +317,16 @@ class MapSearchScreen(
             setInfoWindow(null)
         }.also { map.overlays.add(it) }
 
-        // Passed/rejected spots grouped into greyed-out zone boxes and badges,
-        // making it immediately clear to the driver which zones/stalls they have
-        // already visited.
-        clusterByZone(snapshot.rejected).forEach { cluster ->
-            polygons += Polygon(map).apply {
-                points = orientedBoxCorners(cluster.segments)
-                fillColor = COLOR_REJECTED_ZONE_FILL
-                strokeColor = COLOR_REJECTED_ZONE_STROKE
-                strokeWidth = 2.5f
-            }.also { map.overlays.add(it) }
-
-            markers += Marker(map).apply {
-                position = centroidLatLng(cluster.segments)
-                title = "${clusterTitle(cluster)} (Checked)"
-                icon = rejectedZoneIcon(cluster.zoneType)
-                alpha = 0.5f
-                setAnchor(0.5f, 0.5f)
-                setInfoWindow(null)
-            }.also { map.overlays.add(it) }
-        }
-
-        snapshot.rejected.forEach { segment ->
-            markers += Marker(map).apply {
-                position = GeoPoint(segment.lat, segment.lon)
-                title = segment.addressLabel
-                alpha = 0.35f
-                icon = rejectedMarkerIcon
-                setInfoWindow(null)
-            }.also { map.overlays.add(it) }
-        }
+    // Visited/checked spots grouped into greyed-out zone outlines.
+    // Parking icons are removed for visited zones; icons only show for unvisited zones.
+    clusterByZone(snapshot.rejected).forEach { cluster ->
+      polygons += Polygon(map).apply {
+        points = orientedBoxCorners(cluster.segments)
+        fillColor = COLOR_REJECTED_ZONE_FILL
+        strokeColor = COLOR_REJECTED_ZONE_STROKE
+        strokeWidth = 2.5f
+      }.also { map.overlays.add(it) }
+    }
 
         // Every active candidate, not a capped "nearest N" -- tried
         // capping this (see git history) when a dense result set first
@@ -397,10 +390,10 @@ class MapSearchScreen(
         )
     }
 
-    /** current + upcoming as one undistinguished list -- see the class doc
-     *  on why the UI no longer calls out a single "target" spot. */
-    private fun activeCandidates(snapshot: SessionSnapshot): List<ParkingSegment> =
-        listOfNotNull(snapshot.current) + snapshot.upcoming
+  private fun activeCandidates(snapshot: SessionSnapshot): List<ParkingSegment> {
+    val rejectedIds = snapshot.rejected.map { it.id }.toSet()
+    return (listOfNotNull(snapshot.current) + snapshot.upcoming).filter { it.id !in rejectedIds }
+  }
 
     // -- Clustering: nearby same-zone spots become one box+icon instead of
     //    one pin per spot (per direct feedback that individual circles,
@@ -585,9 +578,8 @@ class MapSearchScreen(
             Color.argb(90, 255, 255, 255)
         }
 
-    // Top-down car icon rotated via Marker.rotation to indicate both position
-    // and direction of travel.
-    private val youMarkerIcon by lazy { vectorDrawableIcon(R.drawable.ic_car, CAR_ICON_DP) }
+  // Purple triangle with rounded corners rotated via Marker.rotation to indicate position and heading
+  private val youMarkerIcon by lazy { vectorDrawableIcon(R.drawable.ic_location_triangle, CAR_ICON_DP) }
 
     // assets/destination.svg's pin (see ic_destination.xml's own comment
     // on why only the pin, not the "Destination" word also in that file).
@@ -685,6 +677,7 @@ class MapSearchScreen(
         // it, since real curb segments are long and narrow.
         const val BOX_PAD_ALONG_M = 6.0
         const val BOX_PAD_ACROSS_M = 4.0
+        const val NEARBY_RADIUS_M = 300.0
     }
 
     // -- Template: our map as the background, the ranked list as content --
@@ -758,20 +751,47 @@ class MapSearchScreen(
      * looked fixed too). If the pane doesn't shrink, listContentTemplate()
      * below is the fallback.
      */
-    private fun summaryContentTemplate(snapshot: SessionSnapshot): Template {
-        val count = activeCandidates(snapshot).size
-        val nearest = activeCandidates(snapshot).minByOrNull { it.distanceFromYouM }
-        val summary = if (nearest != null) {
-            "$count spot${if (count == 1) "" else "s"} nearby · nearest ${nearest.distanceFromYouM.toInt()} m"
-        } else {
-            "No spots nearby"
-        }
-        val pane = Pane.Builder().addRow(Row.Builder().setTitle(summary).build()).build()
-        return PaneTemplate.Builder(pane)
-            .setTitle("Parking Blues")
-            .setHeaderAction(Action.BACK)
-            .build()
+  private fun computeSummaryStrings(snapshot: SessionSnapshot): Pair<String, String> {
+    val active = activeCandidates(snapshot)
+    val nearby = active.filter { it.distanceFromYouM <= NEARBY_RADIUS_M }
+    val nearbyZones = clusterByZone(nearby)
+    val zoneCount = nearbyZones.size
+    val spotCount = nearby.size
+    val nearest = active.minByOrNull { it.distanceFromYouM }
+
+    val title = if (zoneCount > 0) {
+      "$zoneCount parking zone${if (zoneCount == 1) "" else "s"} nearby"
+    } else {
+      "No zones nearby"
     }
+
+    val subtitle = if (nearest != null) {
+      if (zoneCount > 0) {
+        "$spotCount spot${if (spotCount == 1) "" else "s"} available · nearest ${nearest.distanceFromYouM.toInt()} m"
+      } else {
+        "Nearest available ${nearest.distanceFromYouM.toInt()} m"
+      }
+    } else {
+      "All nearby zones checked"
+    }
+    return title to subtitle
+  }
+
+  private fun summaryContentTemplate(snapshot: SessionSnapshot): Template {
+    val (title, subtitle) = computeSummaryStrings(snapshot)
+    val pane = Pane.Builder()
+      .addRow(
+        Row.Builder()
+          .setTitle(title)
+          .addText(subtitle)
+          .build()
+      )
+      .build()
+    return PaneTemplate.Builder(pane)
+      .setTitle("Parking Blues")
+      .setHeaderAction(Action.BACK)
+      .build()
+  }
 
     private fun listContentTemplate(snapshot: SessionSnapshot): Template {
         val items = ItemList.Builder()
