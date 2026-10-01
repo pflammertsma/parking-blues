@@ -125,7 +125,6 @@ class MapSearchScreen(
     // point, which has no meaningful heading) -- shown as a plain dot then.
   private var lastBearing: Float? = null
   private var lastSummaryTitle: String? = null
-  private var lastSummarySubtitle: String? = null
   private var lastState: SessionState? = null
 
   init {
@@ -133,10 +132,9 @@ class MapSearchScreen(
     lifecycleScope.launch {
       repository.session.collect { snapshot ->
         if (snapshot != null) {
-          val (title, subtitle) = computeSummaryStrings(snapshot)
-          if (title != lastSummaryTitle || subtitle != lastSummarySubtitle || snapshot.state != lastState) {
+          val title = computeSummaryTitle(snapshot)
+          if (title != lastSummaryTitle || snapshot.state != lastState) {
             lastSummaryTitle = title
-            lastSummarySubtitle = subtitle
             lastState = snapshot.state
             invalidate()
           }
@@ -753,39 +751,25 @@ class MapSearchScreen(
      * looked fixed too). If the pane doesn't shrink, listContentTemplate()
      * below is the fallback.
      */
-  private fun computeSummaryStrings(snapshot: SessionSnapshot): Pair<String, String> {
+  private fun computeSummaryTitle(snapshot: SessionSnapshot): String {
     val active = activeCandidates(snapshot)
     val nearby = active.filter { it.distanceFromYouM <= NEARBY_RADIUS_M }
     val spotCount = nearby.sumOf { it.estimatedCapacity.coerceAtLeast(1) }
-    val nearest = active.minByOrNull { it.distanceFromYouM }
     val radiusInt = NEARBY_RADIUS_M.toInt()
 
-    val title = when (spotCount) {
+    return when (spotCount) {
       0 -> "No parking spaces within ${radiusInt}m"
       1 -> "1 parking space within ${radiusInt}m"
       else -> "$spotCount parking spaces within ${radiusInt}m"
     }
-
-    val subtitle = if (nearest != null) {
-      val nearestM = (Math.round(nearest.distanceFromYouM / 10.0) * 10).toInt().coerceAtLeast(10)
-      if (spotCount > 0) {
-        "Nearest space: ~${nearestM}m"
-      } else {
-        "Nearest available: ~${nearestM}m"
-      }
-    } else {
-      "All parking spaces checked"
-    }
-    return title to subtitle
   }
 
   private fun summaryContentTemplate(snapshot: SessionSnapshot): Template {
-    val (title, subtitle) = computeSummaryStrings(snapshot)
+    val title = computeSummaryTitle(snapshot)
     val pane = Pane.Builder()
       .addRow(
         Row.Builder()
           .setTitle(title)
-          .addText(subtitle)
           .build()
       )
       .build()
