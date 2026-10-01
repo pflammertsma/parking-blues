@@ -91,6 +91,10 @@ pytest
 
 ### Android (from `android/` directory)
 ```powershell
+# Default AAOS emulator AVD: Automotive_Portrait_API_34-ext9
+# Launch AAOS emulator:
+emulator -avd Automotive_Portrait_API_34-ext9
+
 # Build all modules
 .\gradlew.bat assembleDebug
 

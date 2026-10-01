@@ -24,7 +24,10 @@ android/
 
 ### Android Automotive OS (AAOS)
 ```powershell
-# Build and install on AAOS emulator (AVD must be in Park / Gear = P)
+# Launch default AAOS emulator (AVD must be in Park / Gear = P)
+emulator -avd Automotive_Portrait_API_34-ext9
+
+# Build and install on AAOS emulator
 .\gradlew.bat :automotive:installDebug
 adb shell am start -n com.parkingblues.app/androidx.car.app.activity.CarAppActivity
 ```
