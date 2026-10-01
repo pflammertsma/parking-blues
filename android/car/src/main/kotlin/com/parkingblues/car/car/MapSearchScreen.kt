@@ -319,29 +319,32 @@ class MapSearchScreen(
       }.also { map.overlays.add(it) }
     }
 
-        // Every active candidate, not a capped "nearest N" -- tried
-        // capping this (see git history) when a dense result set first
-        // looked like an overwhelming pile of overlapping pins, but that
-        // was actually the oversized-marker bug (fixed separately), not a
-        // real problem with showing the full set; capping was never asked
-        // for and just hid real data. Nearby same-zone spots are grouped
-        // into one box+icon instead of one pin per spot (see clusterByZone).
-        clusterByZone(activeCandidates(snapshot)).forEach { cluster ->
-            polygons += Polygon(map).apply {
-                points = orientedBoxCorners(cluster.segments)
-                fillColor = zoneFillColor(cluster.zoneType)
-                strokeColor = ZONE_ACCENT
-                strokeWidth = 3f
-            }.also { map.overlays.add(it) }
+    // Every active candidate, not a capped "nearest N" -- tried
+    // capping this (see git history) when a dense result set first
+    // looked like an overwhelming pile of overlapping pins, but that
+    // was actually the oversized-marker bug (fixed separately), not a
+    // real problem with showing the full set; capping was never asked
+    // for and just hid real data. Nearby same-zone spots are grouped
+    // into one box+icon instead of one pin per spot (see clusterByZone).
+    val activeClusters = clusterByZone(activeCandidates(snapshot))
+    activeClusters.forEach { cluster ->
+      polygons += Polygon(map).apply {
+        points = orientedBoxCorners(cluster.segments)
+        fillColor = zoneFillColor(cluster.zoneType)
+        strokeColor = ZONE_ACCENT
+        strokeWidth = 3f
+      }.also { map.overlays.add(it) }
+    }
 
-            markers += Marker(map).apply {
-                position = centroidLatLng(cluster.segments)
-                title = clusterTitle(cluster)
-                icon = zoneIcon(cluster.zoneType)
-                setAnchor(0.5f, 0.5f)
-                setInfoWindow(null)
-            }.also { map.overlays.add(it) }
-        }
+    activeClusters.forEach { cluster ->
+      markers += Marker(map).apply {
+        position = centroidLatLng(cluster.segments)
+        title = clusterTitle(cluster)
+        icon = zoneIcon(cluster.zoneType)
+        setAnchor(0.5f, 0.5f)
+        setInfoWindow(null)
+      }.also { map.overlays.add(it) }
+    }
 
     // Destination marker drawn above parking zones so it is never obscured
     markers += Marker(map).apply {
