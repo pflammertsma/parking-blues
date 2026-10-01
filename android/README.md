@@ -48,5 +48,5 @@ To test Android Auto projected onto a car screen using the Desktop Head Unit (DH
 
 ## Configuration
 
-* **Backend Endpoint:** Configured in `build.gradle.kts` via `BASE_URL`. Defaults to the Cloud Run deployment. Set to `10.0.2.2:5000` (emulator) or `localhost:5000` (with `adb reverse tcp:5000 tcp:5000`) for local backend development.
+* **Backend Endpoint:** Defined as `DEFAULT_BASE_URL` in `ParkingApiClient.kt` (`shared/`), pointing to `https://api.parking-blues.lammertsma.dev`. Can be overridden directly via `ParkingApiClient(baseUrl = "http://localhost:5000")` for local development.
 * **Default Zurich Location:** When active GPS is unavailable or outside Zurich, location provider falls back to fixed Zurich coordinates (`47.379198, 8.531307`) defined in `TestLocation.kt`.
