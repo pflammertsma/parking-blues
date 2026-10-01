@@ -41,14 +41,35 @@ class ParkingCarSession : Session() {
         carContext, Manifest.permission.ACCESS_FINE_LOCATION
     ) == PackageManager.PERMISSION_GRANTED
 
+    private var lastFixLat: Double? = null
+    private var lastFixLon: Double? = null
+    private var lastHeading: Float? = null
+
     private fun startLocationUpdates() {
         // Feed real GPS into the repository for as long as the car session
         // is alive -- the on-device equivalent of dragging the "you" marker
         // continuously in the web MVP (see LocationSource for why this is a
         // continuous stream, not a one-shot fix).
         lifecycleScope.launch {
-            locationUpdates(carContext).collect { (lat, lon) ->
-                repository.updatePosition(lat, lon)
+            locationUpdates(carContext).collect { fix ->
+                val prevLat = lastFixLat
+                val prevLon = lastFixLon
+                lastFixLat = fix.lat
+                lastFixLon = fix.lon
+
+                val bearing = fix.bearingDegrees ?: if (prevLat != null && prevLon != null) {
+                    val dist = com.parkingblues.car.location.calculateDistanceMeters(prevLat, prevLon, fix.lat, fix.lon)
+                    if (dist >= 1.5) {
+                        val computed = com.parkingblues.car.location.calculateBearingDegrees(prevLat, prevLon, fix.lat, fix.lon)
+                        lastHeading = computed
+                        computed
+                    } else {
+                        lastHeading
+                    }
+                } else {
+                    lastHeading
+                }
+                repository.updatePosition(fix.lat, fix.lon, bearing)
             }
         }
     }

@@ -48,7 +48,7 @@ val TEST_LOCATION: Pair<Double, Double> = getSimulatedRouteStart()
  * 15 km/h = ~4.17 m/s, matching user preference (10-20 km/h) to allow
  * observing the car marker turning and parking spots/zones auto-rejecting.
  */
-const val SIMULATED_SPEED_MPS: Double = 15.0 / 3.6
+const val SIMULATED_SPEED_MPS: Double = 20.0 / 3.6
 const val SIMULATED_STEP_INTERVAL_MS: Long = 1000L
 
 /**

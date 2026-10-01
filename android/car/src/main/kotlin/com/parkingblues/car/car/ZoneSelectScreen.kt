@@ -54,8 +54,10 @@ class ZoneSelectScreen(
 
     private fun startSearch(zone: ZoneFilter) {
         lifecycleScope.launch {
-            val (lat, lon) = lastKnownLocation(carContext) ?: (47.379198 to 8.531307)
-            repository.startSearch(lat, lon, zone)
+            val isTest = com.parkingblues.car.location.isTestLocationEnabled(carContext)
+            val initialBearing = if (isTest) com.parkingblues.car.location.getSimulatedRouteInitialBearing() else null
+            val (lat, lon) = lastKnownLocation(carContext) ?: (47.378881 to 8.531066)
+            repository.startSearch(lat, lon, zone, bearing = initialBearing)
             screenManager.push(MapSearchScreen(carContext, repository, zone, lat, lon))
         }
     }
