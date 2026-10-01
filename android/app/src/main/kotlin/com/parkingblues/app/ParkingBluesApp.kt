@@ -19,6 +19,6 @@ class ParkingBluesApp : Application(), HasParkingRepository {
     override fun onCreate() {
         super.onCreate()
         configureOsmdroid(this)
-        repository = ParkingSessionRepository(ParkingApiClient(BuildConfig.BASE_URL))
+        repository = ParkingSessionRepository(ParkingApiClient())
     }
 }

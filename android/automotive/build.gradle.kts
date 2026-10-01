@@ -22,24 +22,7 @@ android {
     }
 
     buildTypes {
-        // Both build types point at the same deployed Cloud Run backend --
-        // see the matching comment in app/build.gradle.kts. Removes the
-        // need to keep a local `python -m backend.app` running just to test
-        // the car screens; same live Zurich data either way. To point at a
-        // local backend instead (AAOS emulator only -- 10.0.2.2 is the
-        // emulator's own loopback alias, it won't resolve on a real device),
-        // temporarily change this field back to "http://10.0.2.2:5000".
-        debug {
-            buildConfigField(
-                "String", "BASE_URL",
-                "\"https://parking-blues-794638973209.europe-west1.run.app\"",
-            )
-        }
         release {
-            buildConfigField(
-                "String", "BASE_URL",
-                "\"https://parking-blues-794638973209.europe-west1.run.app\"",
-            )
             isMinifyEnabled = false
         }
     }

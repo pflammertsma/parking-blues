@@ -46,15 +46,17 @@ private val configureClient: HttpClientConfig<*>.() -> Unit = {
  * decision in the project plan: the algorithm stays server-tunable, this
  * is just transport + DTOs.
  */
+const val DEFAULT_BASE_URL = "https://api.parking-blues.lammertsma.dev"
+
 class ParkingApiClient private constructor(
     private val baseUrl: String,
     private val http: HttpClient,
 ) {
-    constructor(baseUrl: String) : this(baseUrl, HttpClient(block = configureClient))
+    constructor(baseUrl: String = DEFAULT_BASE_URL) : this(baseUrl.trimEnd('/'), HttpClient(block = configureClient))
 
     /** Test-only: inject a fake/mock engine (e.g. Ktor's MockEngine) instead
      *  of hitting a real network -- see shared/src/commonTest. */
-    constructor(baseUrl: String, engine: HttpClientEngine) : this(baseUrl, HttpClient(engine, configureClient))
+    constructor(baseUrl: String = DEFAULT_BASE_URL, engine: HttpClientEngine) : this(baseUrl.trimEnd('/'), HttpClient(engine, configureClient))
 
     suspend fun createSession(
         lat: Double,

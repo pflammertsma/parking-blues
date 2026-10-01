@@ -19,25 +19,7 @@ android {
     }
 
     buildTypes {
-        // Both build types point at the same deployed Cloud Run backend --
-        // real Android Auto/DHU testing is on a USB-connected phone, and
-        // its USB link resets often enough (observed repeatedly) to make
-        // `adb reverse`-to-localhost unreliable for that. Same live Zurich
-        // data either way. To point at a local `python -m backend.app`
-        // instead for backend-side debugging, temporarily change this
-        // field back to "http://localhost:5000" and run
-        // `adb reverse tcp:5000 tcp:5000`.
-        debug {
-            buildConfigField(
-                "String", "BASE_URL",
-                "\"https://parking-blues-794638973209.europe-west1.run.app\"",
-            )
-        }
         release {
-            buildConfigField(
-                "String", "BASE_URL",
-                "\"https://parking-blues-794638973209.europe-west1.run.app\"",
-            )
             isMinifyEnabled = false
         }
     }
