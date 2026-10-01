@@ -561,8 +561,13 @@ class MapSearchScreen(
     private fun vectorDrawableIcon(@DrawableRes resId: Int, sizeDp: Int): Drawable {
         val drawable = ContextCompat.getDrawable(carContext, resId)!!.mutate()
         val sizePx = dpToPx(sizeDp)
+        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, sizePx, sizePx)
-        return drawable
+        drawable.draw(canvas)
+        return BitmapDrawable(carContext.resources, bitmap).apply {
+            setBounds(0, 0, sizePx, sizePx)
+        }
     }
 
     private fun zoneIcon(zoneType: ZoneType) =
@@ -642,10 +647,10 @@ class MapSearchScreen(
         @ColorInt
         val ZONE_ACCENT = Color.parseColor("#268BCC")
 
-        const val CAR_ICON_DP = 96
+        const val CAR_ICON_DP = 84
         const val CANDIDATE_DIAMETER_DP = 48 // 12dp original prototype x4
-        const val ZONE_ICON_DP = 32
-        const val DESTINATION_ICON_DP = 120
+        const val ZONE_ICON_DP = 48 // Keep parking icons at their original 48dp size
+        const val DESTINATION_ICON_DP = 80 // Doubled from original 40dp XML intrinsic size
 
         // The pin's tip in assets/destination.svg, as a fraction of its
         // 474x474 viewBox (computed directly from the source path's own
