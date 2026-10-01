@@ -366,7 +366,7 @@ class MapSearchScreen(
             title = "You"
             icon = youMarkerIcon
             setAnchor(0.5f, 0.5f)
-            rotation = currentBearing
+            rotation = -currentBearing // osmdroid Marker.draw applies -mBearing to canvas rotate
             setFlat(true) // stays map-relative, not screen-relative
             setInfoWindow(null)
         }.also { map.overlays.add(it) }

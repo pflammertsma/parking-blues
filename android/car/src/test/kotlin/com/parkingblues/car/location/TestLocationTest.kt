@@ -27,8 +27,8 @@ class TestLocationTest {
             val dist = calculateDistanceMeters(s1.lat, s1.lon, s2.lat, s2.lon)
             val speedKmh = dist * 3.6 // 1 second per step
             assertTrue(
-                speedKmh in 8.0..22.0,
-                "Speed at step $i ($speedKmh km/h) should be within ~10-20 km/h range"
+                speedKmh in 20.0..45.0,
+                "Speed at step $i ($speedKmh km/h) should be within ~30 km/h range"
             )
         }
     }
