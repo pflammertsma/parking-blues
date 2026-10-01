@@ -184,18 +184,17 @@ class MapSearchScreen(
         virtualDisplay = display
 
         val newPresentation = Presentation(carContext, display.display)
+        val initialCenter = this@MapSearchScreen.repository.session.value?.you
+        val centerLat = retryLat ?: initialCenter?.lat ?: 47.379198
+        val centerLon = retryLon ?: initialCenter?.lon ?: 8.531307
         val newMapView = MapView(newPresentation.context).apply {
             setTileSource(positronTileSource)
-            // Driven entirely programmatically via onScroll/onScale below
-            // (the car surface's real input comes through SurfaceCallback,
-            // not touch events delivered to this Presentation's View) --
-            // osmdroid's own gesture detectors would just fight that.
             setMultiTouchControls(false)
             setBuiltInZoomControls(false)
-            // NOT isTilesScaledToDpi = true -- see the density comment
-            // above; leaving this at its default (false) renders each tile
-            // at its native 256px instead of stretched, which is what's
-            // actually sharp.
+            minZoomLevel = 13.0
+            maxZoomLevel = 20.0
+            controller.setZoom(17.5)
+            controller.setCenter(GeoPoint(centerLat, centerLon))
         }
         newPresentation.setContentView(newMapView)
         mapView = newMapView
@@ -367,18 +366,36 @@ class MapSearchScreen(
       setInfoWindow(null)
     }.also { map.overlays.add(it) }
 
-        if (isFollowingUser) {
-            val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
-            if (!hasFramedInitialCamera) {
-                hasFramedInitialCamera = true
-                map.post {
-                    map.zoomToBoundingBox(boundsForRadius(you, snapshot.radiusM), false)
-                    map.controller.setCenter(recenterTarget(you))
-                }
-            } else {
-                map.controller.animateTo(recenterTarget(you))
-            }
+    if (isFollowingUser) {
+      val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
+      if (!hasFramedInitialCamera) {
+        val frameCamera = {
+          if (map.width > 0 && map.height > 0) {
+            hasFramedInitialCamera = true
+            map.zoomToBoundingBox(boundsForRadius(you, snapshot.radiusM), false)
+            map.controller.setCenter(recenterTarget(you))
+          }
         }
+        if (map.width > 0 && map.height > 0) {
+          map.post { frameCamera() }
+        } else {
+          map.addOnLayoutChangeListener(object : android.view.View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+              v: android.view.View?,
+              left: Int, top: Int, right: Int, bottom: Int,
+              oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int,
+            ) {
+              if ((right - left) > 0 && (bottom - top) > 0) {
+                map.removeOnLayoutChangeListener(this)
+                map.post { frameCamera() }
+              }
+            }
+          })
+        }
+      } else {
+        map.controller.animateTo(recenterTarget(you))
+      }
+    }
         map.invalidate()
     }
 
