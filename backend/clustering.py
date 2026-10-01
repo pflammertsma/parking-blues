@@ -5,10 +5,28 @@ union-find) rather than a full DBSCAN -- this is an MVP; see README
 section 4 for the algorithm this approximates.
 """
 
-from .geo import haversine_m
-from .models import ParkingSegment
+import math
 
-DEFAULT_CLUSTER_EPS_M = 80.0
+from .geo import haversine_m
+from .models import ParkingSegment, ZoneType
+
+# Chosen against real Zurich data, not the original fixture data this was
+# tuned against (see README section 4/9): individual real segments are
+# only a few meters apart along a curb, so any eps loose enough to bridge
+# a street corner chains an entire connected neighborhood into one
+# "cluster" -- at the old 80m default, the top-ranked cluster near a real
+# test point spanned 235 segments over 300+ meters, nowhere near walkable.
+# This stays tight enough to still merge one continuous curb run without
+# bridging across intersections into the next block.
+DEFAULT_CLUSTER_EPS_M = 12.0
+
+# A cluster made up entirely of free (blue-zone) segments gets up to this
+# fraction more score than an otherwise-identical all-paid (white-zone)
+# one, scaled by what fraction of the cluster is free -- see cluster_score.
+# A soft nudge (proximity/capacity can still outweigh it), not a hard
+# preference, since a driver asking for "both" zones still wants the
+# genuinely closer option to win when the difference is large.
+FREE_ZONE_SCORE_BONUS = 0.3
 
 
 class _UnionFind:
@@ -57,13 +75,27 @@ def cluster_centroid(cluster: list[ParkingSegment]) -> tuple[float, float]:
 
 
 def cluster_score(cluster: list[ParkingSegment], origin_lat: float, origin_lon: float) -> float:
-    """Higher is better: rewards more estimated capacity, penalizes distance
-    from the origin. See README section 4, step 2.
+    """Higher is better: rewards more estimated capacity and a higher
+    fraction of free (blue-zone) segments, penalizes distance from the
+    origin. See README section 4, step 2.
+
+    Capacity is log-scaled and distance penalized more steeply than the
+    original (linear-capacity, /100) formula this replaced: against real
+    Zurich density, that version let a cluster with several times the
+    capacity win over one several times closer -- e.g. a 40-segment
+    cluster 264m away outscoring a 9-segment one 69m away, even though a
+    single driver just needs one spot and the closer cluster already
+    offers several tries. Going from 5 to 9 candidates should matter more
+    to the score than going from 20 to 40; log1p gives that diminishing
+    return, and dividing distance by 50 instead of 100 makes proximity the
+    dominant factor at realistic search radii.
     """
     centroid_lat, centroid_lon = cluster_centroid(cluster)
     distance_m = haversine_m(origin_lat, origin_lon, centroid_lat, centroid_lon)
     total_capacity = sum(s.estimated_capacity for s in cluster)
-    return total_capacity / (1.0 + distance_m / 100.0)
+    free_fraction = sum(s.zone_type == ZoneType.BLUE for s in cluster) / len(cluster)
+    base_score = math.log1p(total_capacity) / (1.0 + distance_m / 50.0)
+    return base_score * (1.0 + FREE_ZONE_SCORE_BONUS * free_fraction)
 
 
 def rank_clusters(

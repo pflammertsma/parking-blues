@@ -10,10 +10,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
+import math
+
 from .blue_zone_rules import ZURICH_TZ
 from .clustering import build_ranked_clusters
 from .duration_filter import segment_supports_duration
-from .geo import haversine_m
+from .geo import bearing_deg, haversine_m
 from .models import ParkingSegment, ZoneType
 
 DEFAULT_INITIAL_RADIUS_M = 300.0
@@ -36,6 +38,52 @@ APPROACH_THRESHOLD_M = 20.0
 # "Passed without stopping": moved at least this much farther away *after*
 # having gotten within APPROACH_THRESHOLD_M, without a confirm in between.
 DEPART_MARGIN_M = 15.0
+
+# _pull_in_local_cluster only retargets when the best newly-found local
+# candidate beats the current one by at least this much -- without a
+# margin (or any comparison at all), calling it every position-update tick
+# surfaces some "new" candidate almost every tick just because the search
+# window moved with the driver, regardless of whether it's actually any
+# better than what's already targeted, which made the target flicker
+# constantly while driving instead of only changing when something
+# meaningfully closer shows up.
+LOCAL_PULL_IN_MARGIN_M = 15.0
+
+# A movement shorter than this doesn't update the tracked driving heading
+# -- GPS/drag jitter over a couple of meters gives a near-random bearing,
+# and recomputing it from that noise on every tick would make the
+# direction weighting below just as unstable as the flickering it's meant
+# to fix. Below this, the previous heading (if any) is kept as-is.
+MIN_HEADING_UPDATE_DISTANCE_M = 5.0
+
+# How much a candidate's effective distance (used by _pull_in_local_cluster)
+# is discounted when it's straight ahead of the driving heading, or
+# inflated when it's straight behind -- e.g. at 0.25, a spot dead ahead
+# counts as 25% closer than it actually is, one dead behind as 25%
+# farther, tapering to no adjustment for a spot directly to the side. This
+# is what lets "the driver is heading toward a better cluster" win a
+# reconsideration despite LOCAL_PULL_IN_MARGIN_M, without weakening that
+# margin's job of stopping merely-new-but-not-actually-better candidates
+# from winning on every tick.
+DIRECTION_WEIGHT = 0.25
+
+
+def _directional_distance(
+    from_lat: float, from_lon: float, heading_deg: float | None,
+    to_lat: float, to_lon: float, actual_distance_m: float,
+) -> float:
+    """`actual_distance_m`, adjusted by how well a straight line from
+    (from_lat, from_lon) to (to_lat, to_lon) lines up with heading_deg --
+    see DIRECTION_WEIGHT. Returns actual_distance_m unchanged if there's no
+    known heading yet (too early in the session, or not enough movement
+    has happened -- see MIN_HEADING_UPDATE_DISTANCE_M).
+    """
+    if heading_deg is None:
+        return actual_distance_m
+    bearing_to_target = bearing_deg(from_lat, from_lon, to_lat, to_lon)
+    angle_diff = abs(((bearing_to_target - heading_deg + 180) % 360) - 180)
+    alignment = math.cos(math.radians(angle_diff))  # +1 ahead, -1 behind
+    return actual_distance_m * (1.0 - DIRECTION_WEIGHT * alignment)
 
 
 class SessionState(str, Enum):
@@ -66,6 +114,12 @@ class ParkingSession:
     # you're moving -- see the segment_json "distance_from_you_m" field.
     last_lat: float
     last_lon: float
+    # The driver's current direction of travel, as a compass bearing --
+    # None until enough movement has happened to compute one (see
+    # MIN_HEADING_UPDATE_DISTANCE_M). Used to prefer candidates the driver
+    # is actually heading toward over ones that are merely closer as the
+    # crow flies -- see _directional_distance and _pull_in_local_cluster.
+    heading_deg: float | None = None
     # None means no preference -- every candidate query re-applies this
     # (see SessionStore._candidates_for), since whether a spot satisfies a
     # given duration is time-of-day dependent for blue zone and can change
@@ -133,7 +187,11 @@ class ParkingSession:
         moving (not just once they stop), so both auto-rejection and
         retargeting react smoothly instead of needing a discrete drop.
         """
+        previous_lat, previous_lon = self.last_lat, self.last_lon
         self.last_lat, self.last_lon = lat, lon
+        moved_m = haversine_m(previous_lat, previous_lon, lat, lon)
+        if moved_m >= MIN_HEADING_UPDATE_DISTANCE_M:
+            self.heading_deg = bearing_deg(previous_lat, previous_lon, lat, lon)
 
         if self.current is None:
             return "exhausted"
@@ -283,16 +341,26 @@ class SessionStore:
     def _pull_in_local_cluster(
         self, session: ParkingSession, lat: float, lon: float, now: datetime
     ) -> bool:
-        """Called when the driver's current cluster just ran out, or when
-        they've simply drifted far from their current target (e.g. drove
-        straight out of the whole search area). Either way, the fallback
-        would otherwise be whatever's next in the fixed, destination-ranked
-        order -- which could mean sending them clear across the map (or a
-        barrier), or back toward a region they've already left, rather than
-        widening the search right around where they actually are. Look for
-        anything new near the driver first; only fall back to the existing,
-        possibly-distant queue if nothing turns up locally. Returns True if
-        a local cluster was found and prepended.
+        """Called on every position update (see update_position) so a
+        driver who's drifted away from their current target -- or straight
+        out of the whole search area -- gets offered whatever's actually
+        near them, instead of whatever's next in the fixed, destination-
+        ranked order (which could mean sending them clear across the map,
+        over a barrier, or back toward a region they've already left).
+        Look for anything new near the driver first; only fall back to the
+        existing, possibly-distant queue if nothing turns up locally.
+
+        Distances are direction-weighted (_directional_distance): a find
+        roughly ahead of the driver's current heading counts as closer than
+        it actually is, one roughly behind as farther, so a driver heading
+        toward a genuinely better cluster gets offered it sooner than pure
+        distance would justify. Still gated by LOCAL_PULL_IN_MARGIN_M on
+        top of that weighting -- calling this every tick means it turns up
+        some "new" (not-yet-seen) candidate almost constantly just because
+        the search window moved with the driver; without a margin, every
+        one of those would win by virtue of being new, not by being any
+        closer (or better-aligned with where they're headed). Returns True
+        if it retargeted.
         """
         known_ids = session.rejected_ids | {
             seg.id for cluster in session.candidates for seg in cluster
@@ -303,9 +371,19 @@ class SessionStore:
         )
         if not local_clusters:
             return False
-        local_clusters.sort(
-            key=lambda cluster: min(haversine_m(lat, lon, s.lat, s.lon) for s in cluster)
-        )
+
+        def effective_distance(seg: ParkingSegment) -> float:
+            actual = haversine_m(lat, lon, seg.lat, seg.lon)
+            return _directional_distance(lat, lon, session.heading_deg, seg.lat, seg.lon, actual)
+
+        local_clusters.sort(key=lambda cluster: min(effective_distance(s) for s in cluster))
+        best_local_effective = min(effective_distance(s) for s in local_clusters[0])
+
+        current_target = session.candidates[0][0]
+        current_effective = effective_distance(current_target)
+        if best_local_effective >= current_effective - LOCAL_PULL_IN_MARGIN_M:
+            return False
+
         session.candidates = local_clusters + session.candidates
         return True
 
@@ -316,13 +394,6 @@ class SessionStore:
         event = session.update_position(lat, lon)
 
         if session.state == SessionState.SEARCHING:
-            # Checked every tick, not just once the driver has already
-            # drifted well past the target -- by the time a distance
-            # threshold would trip, they'd have already been driving blind
-            # for a while. _pull_in_local_cluster excludes anything already
-            # known and only changes candidates when it finds something
-            # genuinely new nearby, so calling it continuously is cheap and
-            # can't cause flip-flopping.
             if self._pull_in_local_cluster(session, lat, lon, now):
                 event = "retargeted"
 

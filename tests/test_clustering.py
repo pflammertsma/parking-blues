@@ -79,3 +79,43 @@ def test_build_candidate_order_orders_within_cluster_by_distance():
 
 def test_build_candidate_order_empty_input():
     assert build_candidate_order([], ORIGIN_LAT, ORIGIN_LON) == []
+
+
+def test_default_eps_does_not_chain_across_a_typical_intersection_gap():
+    # Real Zurich data is dense enough along one curb that any generous eps
+    # chains far past a single walkable block -- at the old 80m default, a
+    # real-data query saw a 235-segment cluster spanning 300+ meters. This
+    # pins the default to something that still separates two distinct
+    # clusters ~20m apart (roughly a street-corner gap) rather than merging
+    # them into one "cluster" a driver couldn't reasonably treat as local.
+    segments = [
+        make_segment("block-a-1", 0, 0),
+        make_segment("block-a-2", 0, 5),
+        make_segment("block-b-1", 0, 25),
+        make_segment("block-b-2", 0, 30),
+    ]
+    clusters = cluster_segments(segments)  # default eps, not 80
+    assert len(clusters) == 2
+    assert {frozenset(s.id for s in c) for c in clusters} == {
+        frozenset({"block-a-1", "block-a-2"}),
+        frozenset({"block-b-1", "block-b-2"}),
+    }
+
+
+def test_free_zone_cluster_is_preferred_over_an_equally_placed_paid_one():
+    # Same distance, same capacity -- only the zone type differs. A driver
+    # asking for "both" zones should still see the free option ranked
+    # first when there's nothing else to prefer one over the other.
+    blue_cluster = [make_segment("blue", 100, 0, zone_type=ZoneType.BLUE)]
+    white_cluster = [make_segment("white", 100, 5, zone_type=ZoneType.WHITE)]
+    ranked = rank_clusters([white_cluster, blue_cluster], ORIGIN_LAT, ORIGIN_LON)
+    assert {s.id for s in ranked[0]} == {"blue"}
+
+
+def test_free_zone_bonus_does_not_override_a_large_proximity_difference():
+    # The bonus is a nudge, not a hard preference -- a much closer paid
+    # cluster should still beat a distant free one.
+    close_white = [make_segment("close-white", 50, 0, zone_type=ZoneType.WHITE)]
+    far_blue = [make_segment("far-blue", 5000, 0, zone_type=ZoneType.BLUE)]
+    ranked = rank_clusters([far_blue, close_white], ORIGIN_LAT, ORIGIN_LON)
+    assert {s.id for s in ranked[0]} == {"close-white"}

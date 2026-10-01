@@ -266,23 +266,96 @@ to look up. The API field is named `estimated_fee_chf_per_hour` (not
 `fee_chf_per_hour`) and the UI always appends "(rough estimate)" so
 nobody mistakes it for real pricing.
 
+### 9.4 Clustering/ranking tuned against real density, not fixture data
+
+`backend/clustering.py`'s defaults were chosen against the original
+12-point fixture dataset and never revisited after real Zurich data (§9)
+replaced it -- which produced genuinely bad picks. Two separate problems,
+found by reproducing a real "why is this so far away" report:
+
+- **`DEFAULT_CLUSTER_EPS_M` was 80m.** Real segments sit only a few
+  meters apart along a curb, so any eps loose enough to bridge a street
+  corner chains an entire connected neighborhood into one "cluster" --
+  the top-ranked cluster near a real test point spanned 235 segments over
+  300+ meters, nowhere near walkable. Now 12m: tight enough to not bridge
+  across intersections, loose enough to still merge one continuous curb
+  run.
+- **`cluster_score` was linear capacity / (1 + distance/100).** Even
+  after fixing the eps, a 40-segment cluster 264m away still outscored a
+  9-segment one 69m away -- a single driver only needs one spot, and 9
+  nearby tries is already plenty of hedge against some being taken, so
+  capacity going from 20 to 40 shouldn't matter as much to the score as
+  going from 5 to 9. Now `log1p(capacity) / (1 + distance/50)`: capacity
+  has diminishing returns, and distance is weighted more steeply, so
+  proximity dominates at realistic search radii instead of a much bigger
+  cluster winning over a much closer one.
+
+Also added a soft preference for free (blue-zone) clusters when searching
+both zones together (`FREE_ZONE_SCORE_BONUS`, up to +30% score scaled by
+what fraction of the cluster is free) -- a nudge, not a hard rule, since
+a genuinely much closer paid cluster should still win over a distant free
+one.
+
+Verified against the real default search point: "both zones" now picks a
+white-zone spot 55.9m away instead of jumping to a blue cluster 230.6m
+away for more aggregate capacity.
+
+### 9.5 Retargeting was flickering constantly while driving
+
+Separate bug, reported as "the target keeps jumping while the vehicle
+moves": `SessionStore._pull_in_local_cluster` runs on every position
+update (not just on exhaustion or real drift -- see the "checked every
+tick" reasoning in `update_position`), searching a radius around the
+driver's *current* position for anything not yet in the session. As the
+car moves, that search window moves with it, so it surfaces some
+not-yet-seen segment almost every tick -- purely because the window
+shifted, not because that segment is any better than what's already
+targeted. The old code accepted any non-empty find unconditionally, so
+the target reshuffled to whatever was merely *new* on nearly every tick.
+
+Fixed by only accepting a local find when it beats the current target by
+more than `LOCAL_PULL_IN_MARGIN_M` (15m) -- still checked every tick (so
+a genuinely better spot is still picked up immediately), but no longer
+treats "new" as synonymous with "better". Verified with a 60-tick
+simulated drive (~2m/tick, ~120m total) along real data: 5 retargets, each
+moving sequentially to the next real spot the driver was actually passing
+closer to -- not the near-every-tick churn the bug report described.
+
+### 9.6 Driving-direction awareness
+
+Follow-up to §9.5: distance alone doesn't capture "the driver is heading
+straight for a better spot" versus "there's a closer one, but it's back
+the way they came" -- the latter would mean backtracking, and shouldn't
+win just for being nominally closer. `ParkingSession` now tracks a
+`heading_deg` (a compass bearing, recomputed from consecutive positions
+whenever they're at least `MIN_HEADING_UPDATE_DISTANCE_M` (5m) apart --
+below that, GPS/drag jitter gives too noisy a bearing to trust, so the
+previous heading is kept rather than reset).
+
+`_directional_distance` (backend/session.py) adjusts a candidate's
+distance by up to `DIRECTION_WEIGHT` (25%) based on how well it lines up
+with that heading -- straight ahead counts as closer than it actually is,
+straight behind as farther, tapering to no adjustment for something to
+the side. `_pull_in_local_cluster` compares *this* adjusted distance
+against `LOCAL_PULL_IN_MARGIN_M`, not the raw one, so a candidate the
+driver is heading toward can win a reconsideration sooner than pure
+distance would justify -- while the margin still does its §9.5 job of
+requiring a genuine improvement, not just proximity to the search window,
+so this doesn't reopen the flickering that section fixed.
+
 ## 10. Deploying the web MVP to GCP
 
 `deploy/gcloud.sh <project-id> <billing-account-id> [region]` provisions a
 new GCP project and deploys to Cloud Run in one go (region defaults to
-`europe-west1`; see that script's comment on why not `europe-west6`,
-which would have matched the app's Zurich premise but didn't work out for
-this project's actual deploy). It assumes `gcloud auth login` is already
-done and you have a billing account to link (`gcloud billing accounts
-list`). Requires `gcloud` locally -- it cannot be run from a Claude Code
+`europe-west1` -- not `europe-west6`/Zurich, which would've been fitting,
+but Cloud Run domain mappings aren't available there; see section 11). It
+assumes `gcloud auth login` is already done and you have a billing account
+to link (`gcloud billing accounts list`). Requires `gcloud` locally -- it cannot be run from a Claude Code
 on the web session, which has no access to your machine's credentials.
 
 The live service for this project is
 `https://parking-blues-794638973209.europe-west1.run.app` (also what the
-Android debug/release builds point at, see §11) -- as of this writing
-there is no Cloud Build trigger wired up for it despite `cloudbuild.yaml`
-existing (zero triggers, zero build history on the project); redeploy
-manually with the command above until/unless that trigger is recreated.
+Android debug/release builds point at, see §12).
 
 Under the hood this is a plain `gcloud run deploy --source .`: Cloud
 Run's buildpack detects `requirements.txt` and `Procfile` and runs
@@ -296,7 +369,114 @@ scaling out to multiple instances would silently drop sessions created on
 a different one. That's fine for a low-traffic MVP demo, not for real
 concurrent load -- see the "known MVP limitations" note in section 9.
 
-## 11. Android app (milestone 6, in progress)
+**CI**: `.github/workflows/deploy-backend.yml` runs this same `gcloud run
+deploy --source .` automatically on every push to `main` that touches
+`backend/`, `main.py`, `requirements.txt`, or `Procfile`, authenticating as
+a dedicated `parking-blues-deployer` service account (roles: `run.admin`,
+`cloudbuild.builds.editor`, `artifactregistry.writer`, `storage.admin`,
+`iam.serviceAccountUser` -- the set `gcloud run deploy --source` needs to
+build and deploy on your behalf) via the `GCP_SA_KEY` repo secret. This
+replaces an never-actually-set-up Cloud Build trigger: an earlier
+`cloudbuild.yaml` in this repo *described* a build config as though a
+Cloud Build trigger already existed and ran it on every push, but no such
+trigger was ever created -- every deploy up to this point, including the
+one currently live, was run by hand. `cloudbuild.yaml` has been removed;
+this GitHub Action is the only deploy automation now, matching how the
+frontend publishes (section 11), rather than running two different CI
+systems for one small app.
+
+## 11. Serving the frontend from lammertsma.dev + API on a subdomain
+
+**Current status: live.**
+
+- Frontend: <https://lammertsma.dev/projects/parking-blues>
+- API: `https://api.parking-blues.lammertsma.dev` (backed by the Cloud Run
+  service below; also reachable directly at its own Cloud Run URL,
+  `https://parking-blues-794638973209.europe-west1.run.app`, e.g. for
+  hitting the API without CORS during local frontend development)
+- Cloud Run service `parking-blues`, project `parking-blues-mvp`, region
+  `europe-west1`
+
+The MVP is also reachable at `lammertsma.dev/projects/parking-blues`, with
+the API on its own subdomain, `api.parking-blues.lammertsma.dev`. Two
+separate origins, not one proxied through the other -- `web/`'s frontend
+assets (`index.html`, `app.js`, `style.css`) are static files, so there's
+no need for Firebase Hosting to proxy anything through Cloud Run (which
+would additionally have required the Cloud Run service and the Firebase
+Hosting site to live in the same GCP project, which they don't --
+`parking-blues-mvp` per section 10, vs. `lammertsma-dev`).
+
+**Frontend** -- plain static hosting, in a *different* repo
+(`pflammertsma/lammertsma-dev`, the personal site), copied under
+`public/projects/parking-blues/` following the same pattern as that repo's
+other projects (e.g. `switch-plates/`). Not a build step or a git
+submodule -- `scripts/publish_to_lammertsma.py` copies `web/`'s three files
+verbatim and applies the small portfolio-specific tweaks the app itself
+doesn't carry (`noindex,nofollow`, favicon, a title byline), always from
+the pristine source so it's safe to re-run repeatedly.
+`.github/workflows/publish-frontend.yml` runs that script automatically on
+every push to `main` that touches `web/`, commits the result to
+`lammertsma-dev` (so that repo's git history stays the real record of
+what's live, not just whatever CI last deployed), and runs `firebase
+deploy --only hosting` there. Needs two repo secrets on this side,
+neither of which this session can generate (both require an interactive
+browser login):
+- `LAMMERTSMA_DEV_PUSH_TOKEN`: a GitHub PAT with write access to
+  `pflammertsma/lammertsma-dev`, so this repo's CI can push there.
+- `FIREBASE_TOKEN`: from `firebase login:ci` (run once, locally, against
+  the `lammertsma-dev` Firebase project).
+
+**API** -- `web/app.js`'s `API_BASE` constant detects when it's being
+served from a `lammertsma.dev` hostname and points `fetch()` calls at
+`https://api.parking-blues.lammertsma.dev` instead of a same-origin path;
+everywhere else (this app's own Cloud Run URL, `python -m backend.app`
+locally) it stays same-origin as before. Since the two are now different
+origins, `backend/app.py` sends CORS headers (`Access-Control-Allow-Origin`
+etc., via a small `after_request` hook -- no new dependency) for an
+allow-list of origins (`ALLOWED_ORIGINS`) rather than `*`, since a public
+`*` would let any third-party site create/drive sessions against this API
+using a visitor's own IP/browser as the requester.
+
+Cloud Run **domain mappings** (`gcloud run domain-mappings create`, needed
+for the API subdomain below) only work in a fixed legacy list of regions,
+which does not include `europe-west6` (Zurich) -- attempting it there fails
+with `UNIMPLEMENTED`. That's why the service now deploys to `europe-west1`
+(Belgium) instead; see section 10.
+
+Three one-time steps outside this repo, requiring credentials this session
+doesn't have -- already done for the current deployment, kept here for
+whoever (re)does this from scratch, e.g. after a project migration:
+
+1. **Deploy the service to `europe-west1`**: `gcloud run deploy
+   parking-blues --source . --region europe-west1 --allow-unauthenticated
+   --max-instances=1` (from the repo root, in the `parking-blues-mvp`
+   project). If migrating off an existing `europe-west6` deployment, delete
+   the old one once the new one's confirmed working (`gcloud run services
+   delete parking-blues --region europe-west6`), to avoid paying for/
+   maintaining two.
+2. **Cloud Run domain mapping**: `gcloud beta run domain-mappings create
+   --service parking-blues --domain api.parking-blues.lammertsma.dev
+   --region europe-west1` (the mapping command lives under `gcloud beta`,
+   not the main track). If `lammertsma.dev` hasn't already been verified as
+   owned in *that* GCP project, `gcloud` will point you to Search Console's
+   domain verification first -- domain mappings are gated per-project, so
+   verifying it once for `lammertsma-dev` (Firebase's project) doesn't
+   carry over.
+3. **DNS** (Cloudflare, where `lammertsma.dev`'s DNS is managed): add the
+   CNAME record the domain-mappings command prints (typically
+   `ghs.googlehosted.com`) for `api.parking-blues.lammertsma.dev`, set to
+   **DNS only** (grey cloud, not proxied) -- Cloudflare's proxy interferes
+   with Google's automatic managed-certificate issuance/renewal for the
+   mapping.
+
+The `LAMMERTSMA_DEV_PUSH_TOKEN`/`FIREBASE_TOKEN` repo secrets mentioned
+above are also already set -- confirmed via a manual
+`workflow_dispatch` run of `publish-frontend.yml` (checkout + push to
+`lammertsma-dev` succeeded; the Firebase deploy step itself only runs when
+there's an actual content change to publish, so it'll get its first real
+exercise on the next `web/` change).
+
+## 12. Android app (milestone 6, in progress)
 
 A first version of the Android Auto / Android Automotive OS (AAOS) client,
 built with Kotlin Multiplatform per §5.2. See `android/README.md` for the

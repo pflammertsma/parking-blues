@@ -177,8 +177,17 @@ function render(data) {
   }
 }
 
+// When this page is served as static files from lammertsma.dev (e.g.
+// /projects/parking-blues/), the Flask API isn't on the same origin --
+// it's reached via api.parking-blues.lammertsma.dev instead (see README
+// section 11). Anywhere else (this app's own Cloud Run domain, or local
+// dev via `python -m backend.app`), the API is same-origin as usual.
+const API_BASE = window.location.hostname.endsWith("lammertsma.dev")
+  ? "https://api.parking-blues.lammertsma.dev"
+  : "";
+
 async function api(path, options) {
-  const response = await fetch(path, {
+  const response = await fetch(API_BASE + path, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });

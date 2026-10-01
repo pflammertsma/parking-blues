@@ -14,13 +14,9 @@ set -euo pipefail
 
 PROJECT_ID="${1:?Usage: deploy/gcloud.sh <project-id> <billing-account-id> [region]}"
 BILLING_ACCOUNT_ID="${2:?Usage: deploy/gcloud.sh <project-id> <billing-account-id> [region]}"
-REGION="${3:-europe-west1}" # Belgium, not europe-west6 (Zurich, which would
-# have fit the app's premise) -- the live service for this project ended up
-# in west1 rather than the west6 this script/README originally defaulted to;
-# why isn't recorded anywhere (no Cloud Build history survives to check).
-# Every doc/config in this repo (Android BASE_URL, cloudbuild.yaml, README)
-# was corrected to match what's actually live -- keep them in sync if you
-# change this again.
+REGION="${3:-europe-west1}" # Not europe-west6 (Zurich, which would've been
+# fitting) -- Cloud Run domain mappings, needed for the API subdomain, aren't
+# available there. See README section 11.
 
 echo "==> Creating project ${PROJECT_ID}"
 gcloud projects create "${PROJECT_ID}" --name="Parking Blues MVP"
