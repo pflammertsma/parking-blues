@@ -9,6 +9,7 @@ import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.lifecycle.lifecycleScope
 import com.parkingblues.car.location.lastKnownLocation
+import com.parkingblues.car.location.setTestLocationEnabled
 import com.parkingblues.shared.ParkingSessionRepository
 import com.parkingblues.shared.model.ZoneFilter
 import kotlinx.coroutines.launch
@@ -25,10 +26,25 @@ class ZoneSelectScreen(
             items.addItem(
                 Row.Builder()
                     .setTitle(zone.name.lowercase().replaceFirstChar { it.uppercase() } + " zone")
-                    .setOnClickListener { startSearch(zone) }
+                    .setOnClickListener {
+                        setTestLocationEnabled(carContext, false)
+                        startSearch(zone)
+                    }
                     .build()
             )
         }
+
+        items.addItem(
+            Row.Builder()
+                .setTitle("Simulate Test Drive (Zurich)")
+                .addText("Live 15 km/h test drive with car marker & auto-rejection")
+                .setOnClickListener {
+                    setTestLocationEnabled(carContext, true)
+                    startSearch(ZoneFilter.BOTH)
+                }
+                .build()
+        )
+
         return ListTemplate.Builder()
             .setTitle("Parking Blues")
             .setHeaderAction(Action.APP_ICON)
@@ -40,9 +56,6 @@ class ZoneSelectScreen(
         lifecycleScope.launch {
             val (lat, lon) = lastKnownLocation(carContext) ?: (47.379198 to 8.531307)
             repository.startSearch(lat, lon, zone)
-            // MapSearchScreen is the custom-map prototype (README §11 /
-            // android/README.md); SearchScreen (PlaceListMapTemplate, the
-            // host-rendered map) is kept as a working fallback.
             screenManager.push(MapSearchScreen(carContext, repository, zone, lat, lon))
         }
     }

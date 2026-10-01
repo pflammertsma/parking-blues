@@ -35,4 +35,6 @@ dependencies {
     api(libs.play.services.location)
     api(libs.osmdroid.android)
     api(libs.kotlinx.coroutines.core)
+
+    testImplementation(kotlin("test"))
 }

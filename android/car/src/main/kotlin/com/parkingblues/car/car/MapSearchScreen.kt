@@ -194,23 +194,13 @@ class MapSearchScreen(
     }
 
     override fun onVisibleAreaChanged(visibleArea: Rect) {
-        // Keep pins clear of whatever the host draws on top of the map
-        // (e.g. the list pane, status bar) -- without this, markers under
-        // the content template would be there but unreachable/obscured.
-        //
-        // Stored as the host's raw rect, NOT pre-converted to edge-padding
-        // amounts here -- that conversion used to subtract from
-        // mapView?.width/height at the moment this callback fired, and this
-        // callback can fire before the map view has completed its first
-        // layout pass (width/height still 0 then). When it did, that
-        // produced a large *negative* padding that silently corrupted
-        // every recenterTarget() call from then on -- confirmed live
-        // (Recenter sent the camera to roughly the visibleArea's own
-        // top-left-sized offset instead of centering on "you"). Computing
-        // the visible center directly from this rect's own coordinates in
-        // recenterTarget avoids depending on map dimensions at callback
-        // time at all.
         this.visibleArea = visibleArea
+        if (isFollowingUser) {
+            repository.session.value?.let { snapshot ->
+                val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
+                mapView?.controller?.setCenter(recenterTarget(you))
+            }
+        }
     }
 
     /**
@@ -223,6 +213,7 @@ class MapSearchScreen(
     private fun recenterTarget(you: GeoPoint): GeoPoint {
         val map = mapView ?: return you
         if (map.width == 0 || map.height == 0) return you
+        if (visibleArea.width() <= 0 || visibleArea.height() <= 0) return you
         val projection = map.projection
         val youPx = projection.toPixels(you, null)
         val fullCenterX = map.width / 2
@@ -321,11 +312,32 @@ class MapSearchScreen(
             setInfoWindow(null)
         }.also { map.overlays.add(it) }
 
+        // Passed/rejected spots grouped into greyed-out zone boxes and badges,
+        // making it immediately clear to the driver which zones/stalls they have
+        // already visited.
+        clusterByZone(snapshot.rejected).forEach { cluster ->
+            polygons += Polygon(map).apply {
+                points = orientedBoxCorners(cluster.segments)
+                fillColor = COLOR_REJECTED_ZONE_FILL
+                strokeColor = COLOR_REJECTED_ZONE_STROKE
+                strokeWidth = 2.5f
+            }.also { map.overlays.add(it) }
+
+            markers += Marker(map).apply {
+                position = centroidLatLng(cluster.segments)
+                title = "${clusterTitle(cluster)} (Checked)"
+                icon = rejectedZoneIcon(cluster.zoneType)
+                alpha = 0.5f
+                setAnchor(0.5f, 0.5f)
+                setInfoWindow(null)
+            }.also { map.overlays.add(it) }
+        }
+
         snapshot.rejected.forEach { segment ->
             markers += Marker(map).apply {
                 position = GeoPoint(segment.lat, segment.lon)
                 title = segment.addressLabel
-                alpha = 0.4f // dimmed -- "checked, not available" (web MVP parity)
+                alpha = 0.35f
                 icon = rejectedMarkerIcon
                 setInfoWindow(null)
             }.also { map.overlays.add(it) }
@@ -358,29 +370,10 @@ class MapSearchScreen(
         if (isFollowingUser) {
             val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
             if (!hasFramedInitialCamera) {
-                // Framed on the session's actual search radius, NOT on
-                // wherever the shown (capped) candidates happen to be --
-                // tried that (see git history) and it fought directly with
-                // the marker cap: real data here is dense enough that the
-                // nearest 20 are all within a few dozen meters of each
-                // other, so fitting bounds to just them zoomed in far
-                // tighter than "N spots nearby" implies. The search radius
-                // is a stable value independent of how many candidates
-                // exist or how tightly they're packed, so it gives a
-                // consistent, predictable initial zoom regardless.
-                //
-                // Posted, not called directly: zoomToBoundingBox needs a
-                // completed layout pass to compute a zoom level, and right
-                // after Presentation.show() there may not have been one yet
-                // -- confirmed live (first frame showed the whole world, not
-                // Zurich, even after adding a width/height>0 guard here,
-                // which also never tripped in time). Posting to the map
-                // view's own message queue runs this after the pending
-                // layout, which osmdroid's own samples do for the same
-                // reason.
                 hasFramedInitialCamera = true
                 map.post {
-                    map.zoomToBoundingBox(boundsForRadius(you, snapshot.radiusM), true)
+                    map.zoomToBoundingBox(boundsForRadius(you, snapshot.radiusM), false)
+                    map.controller.setCenter(recenterTarget(you))
                 }
             } else {
                 map.controller.animateTo(recenterTarget(you))
@@ -557,6 +550,17 @@ class MapSearchScreen(
     private val blueZoneIcon by lazy { vectorDrawableIcon(R.drawable.ic_zone_blue, ZONE_ICON_DP) }
     private val whiteZoneIcon by lazy { vectorDrawableIcon(R.drawable.ic_zone_white, ZONE_ICON_DP) }
 
+    private val rejectedBlueZoneIcon by lazy {
+        vectorDrawableIcon(R.drawable.ic_zone_blue, ZONE_ICON_DP).apply {
+            colorFilter = android.graphics.PorterDuffColorFilter(COLOR_REJECTED, android.graphics.PorterDuff.Mode.SRC_IN)
+        }
+    }
+    private val rejectedWhiteZoneIcon by lazy {
+        vectorDrawableIcon(R.drawable.ic_zone_white, ZONE_ICON_DP).apply {
+            colorFilter = android.graphics.PorterDuffColorFilter(COLOR_REJECTED, android.graphics.PorterDuff.Mode.SRC_IN)
+        }
+    }
+
     private fun vectorDrawableIcon(@DrawableRes resId: Int, sizeDp: Int): Drawable {
         val drawable = ContextCompat.getDrawable(carContext, resId)!!.mutate()
         val sizePx = dpToPx(sizeDp)
@@ -567,6 +571,9 @@ class MapSearchScreen(
     private fun zoneIcon(zoneType: ZoneType) =
         if (zoneType == ZoneType.BLUE) blueZoneIcon else whiteZoneIcon
 
+    private fun rejectedZoneIcon(zoneType: ZoneType) =
+        if (zoneType == ZoneType.BLUE) rejectedBlueZoneIcon else rejectedWhiteZoneIcon
+
     private fun zoneFillColor(zoneType: ZoneType) =
         if (zoneType == ZoneType.BLUE) {
             Color.argb(90, Color.red(ZONE_ACCENT), Color.green(ZONE_ACCENT), Color.blue(ZONE_ACCENT))
@@ -574,19 +581,9 @@ class MapSearchScreen(
             Color.argb(90, 255, 255, 255)
         }
 
-    // -- Marker icons: small solid circles with a white ring, not the
-    //    stock balloon-shaped default pins (Google Maps' oldest, least
-    //    modern-looking asset). Built once and cached -- there are only a
-    //    handful of distinct looks needed, not one per marker instance.
-    //    Sized 4x the original prototype size per direct feedback that the
-    //    first pass was too small to read at a glance while driving.
-
-    // A solid triangle, not a circle -- points in the direction of travel
-    // via Marker.rotation, which needs a shape with an actual heading to
-    // read; a circle can't show direction no matter how it's rotated,
-    // which is why it used to be circle+chevron instead of just rotating a
-    // plain dot.
-    private val youMarkerIcon by lazy { triangleIcon(colorInt = COLOR_YOU, diameterDp = YOU_DIAMETER_DP) }
+    // Top-down car icon rotated via Marker.rotation to indicate both position
+    // and direction of travel.
+    private val youMarkerIcon by lazy { vectorDrawableIcon(R.drawable.ic_car, CAR_ICON_DP) }
 
     // assets/destination.svg's pin (see ic_destination.xml's own comment
     // on why only the pin, not the "Destination" word also in that file).
@@ -613,42 +610,12 @@ class MapSearchScreen(
         return BitmapDrawable(carContext.resources, bitmap).apply { setBounds(0, 0, diameterPx, diameterPx) }
     }
 
-    /** Isoceles triangle pointing "up" in its own bitmap; Marker.rotation
-     *  then turns it to match the driver's actual heading. */
-    private fun triangleIcon(
-        @ColorInt colorInt: Int,
-        diameterDp: Int,
-    ): Drawable {
-        val sizePx = dpToPx(diameterDp)
-        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val triangle = android.graphics.Path().apply {
-            moveTo(sizePx / 2f, 0f)
-            lineTo(sizePx.toFloat(), sizePx.toFloat())
-            lineTo(0f, sizePx.toFloat())
-            close()
-        }
-        canvas.drawPath(triangle, fillPaint(colorInt))
-        return BitmapDrawable(carContext.resources, bitmap).apply { setBounds(0, 0, sizePx, sizePx) }
-    }
-
-    // Reverted to the host's own density (see git history): tried sizing
-    // these off an inflated density floor instead, on the theory that a
-    // higher-density bitmap would be the same apparent size but sharper --
-    // it doesn't work that way for a marker bitmap placed at raw pixel size
-    // with no density compensation, so that made every marker render
-    // roughly 2x too big (on top of the earlier, deliberate 4x sizing),
-    // confirmed directly ("you've made the size of the pins huge").
     private fun dpToPx(dp: Int): Int =
         (dp * carContext.resources.displayMetrics.density).toInt().coerceAtLeast(1)
 
     private fun fillPaint(@ColorInt colorInt: Int) =
         Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colorInt; style = Paint.Style.FILL }
 
-    // Solid, not semi-transparent -- a translucent stroke was part of what
-    // made these look blurry/soft-edged rather than just being a smaller
-    // ring (direct feedback); kept dark rather than the original white
-    // (see the white-ring note below) for contrast against this light map.
     private fun strokePaint(strokePx: Float) =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.argb(200, 0, 0, 0)
@@ -667,6 +634,10 @@ class MapSearchScreen(
         val COLOR_YOU = Color.parseColor("#00B8D4")
         @ColorInt
         val COLOR_REJECTED = Color.parseColor("#9E9E9E")
+        @ColorInt
+        val COLOR_REJECTED_ZONE_FILL = Color.argb(45, 150, 150, 150)
+        @ColorInt
+        val COLOR_REJECTED_ZONE_STROKE = Color.parseColor("#9E9E9E")
 
         // The blue used by both assets/blue-zone.svg and assets/white-zone.svg
         // (as its fill and border respectively) -- reused for the cluster
@@ -675,7 +646,7 @@ class MapSearchScreen(
         @ColorInt
         val ZONE_ACCENT = Color.parseColor("#268BCC")
 
-        const val YOU_DIAMETER_DP = 64 // 16dp original prototype x4
+        const val CAR_ICON_DP = 40
         const val CANDIDATE_DIAMETER_DP = 48 // 12dp original prototype x4
         const val ZONE_ICON_DP = 32
         const val DESTINATION_ICON_DP = 40

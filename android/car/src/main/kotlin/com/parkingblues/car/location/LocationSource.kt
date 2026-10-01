@@ -7,9 +7,13 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -28,41 +32,70 @@ data class GpsFix(val lat: Double, val lon: Double, val bearingDegrees: Float?)
  * equivalent of dragging the "you" marker in the web MVP. Caller must have
  * already been granted ACCESS_FINE_LOCATION.
  *
- * When the test-location toggle is on (see TestLocation.kt, on by default),
- * this just emits the fixed Zurich point once instead of querying real GPS
- * -- real device GPS almost never reports Zurich during development, which
- * would otherwise make every search return nothing nearby. A fixed point
- * has no meaningful heading, so bearingDegrees is always null in that case.
+ * Automatically switches between simulated route playback (when test mode is
+ * enabled) and real device GPS (when test mode is disabled).
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @SuppressLint("MissingPermission")
-fun locationUpdates(context: Context): Flow<GpsFix> = callbackFlow {
-    if (isTestLocationEnabled(context)) {
-        trySend(GpsFix(TEST_LOCATION.first, TEST_LOCATION.second, bearingDegrees = null))
-        awaitClose { }
-        return@callbackFlow
-    }
-    val client = LocationServices.getFusedLocationProviderClient(context)
-    val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2_000L).build()
-    val callback = object : LocationCallback() {
-        override fun onLocationResult(result: LocationResult) {
-            result.lastLocation?.let {
-                trySend(GpsFix(it.latitude, it.longitude, if (it.hasBearing()) it.bearing else null))
+fun locationUpdates(context: Context): Flow<GpsFix> {
+    isTestLocationEnabled(context)
+    return testModeFlow.flatMapLatest { isTest ->
+        if (isTest == true) {
+            flow {
+                val route = getSimulatedRouteSteps()
+                var stepIndex = 0
+                while (true) {
+                    emit(route[stepIndex % route.size])
+                    stepIndex++
+                    delay(SIMULATED_STEP_INTERVAL_MS)
+                }
+            }
+        } else {
+            callbackFlow {
+                val client = LocationServices.getFusedLocationProviderClient(context)
+                val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2_000L).build()
+                val callback = object : LocationCallback() {
+                    override fun onLocationResult(result: LocationResult) {
+                        result.lastLocation?.let {
+                            trySend(GpsFix(it.latitude, it.longitude, if (it.hasBearing()) it.bearing else null))
+                        }
+                    }
+                }
+                client.requestLocationUpdates(request, callback, context.mainLooper)
+                awaitClose { client.removeLocationUpdates(callback) }
             }
         }
     }
-    client.requestLocationUpdates(request, callback, context.mainLooper)
-    awaitClose { client.removeLocationUpdates(callback) }
 }
 
-/** One-shot fix, needed to start the very first search before any session exists. */
+/**
+ * One-shot fix, needed to start the very first search before any session exists.
+ * Queries lastLocation and falls back to getCurrentLocation so the app
+ * accurately centers on the user's actual location when test mode is disabled.
+ */
 @SuppressLint("MissingPermission")
 suspend fun lastKnownLocation(context: Context): Pair<Double, Double>? {
-    if (isTestLocationEnabled(context)) return TEST_LOCATION
+    if (isTestLocationEnabled(context)) return getSimulatedRouteStart()
+    val client = LocationServices.getFusedLocationProviderClient(context)
     return suspendCancellableCoroutine { continuation ->
-        LocationServices.getFusedLocationProviderClient(context).lastLocation
+        client.lastLocation
             .addOnSuccessListener { location ->
-                continuation.resume(location?.let { it.latitude to it.longitude })
+                if (location != null) {
+                    continuation.resume(location.latitude to location.longitude)
+                } else {
+                    client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                        .addOnSuccessListener { fresh ->
+                            continuation.resume(fresh?.let { it.latitude to it.longitude })
+                        }
+                        .addOnFailureListener { continuation.resume(null) }
+                }
             }
-            .addOnFailureListener { continuation.resume(null) }
+            .addOnFailureListener {
+                client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                    .addOnSuccessListener { fresh ->
+                        continuation.resume(fresh?.let { it.latitude to it.longitude })
+                    }
+                    .addOnFailureListener { continuation.resume(null) }
+            }
     }
 }
