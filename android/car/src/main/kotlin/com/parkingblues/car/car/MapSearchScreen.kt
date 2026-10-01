@@ -247,10 +247,6 @@ class MapSearchScreen(
         // Reverted until this can be confirmed on real touchscreen hardware
         // (where the host may gate this correctly on its own, since DHU's
         // mouse input may simply not be representative here).
-        android.util.Log.d(
-            "MapSearchScreen",
-            "onScroll distanceX=$distanceX distanceY=$distanceY isInPanMode=$isInPanMode"
-        )
         isFollowingUser = false
         // FIXME if this is caused by scroll wheel up/down, this should zoom in the map, not scroll it
         mapView?.controller?.scrollBy(distanceX.toInt(), distanceY.toInt())
@@ -269,17 +265,6 @@ class MapSearchScreen(
         map.controller.setZoom(newZoom)
         val afterPx = map.projection.toPixels(GeoPoint(before.latitude, before.longitude), null)
         map.controller.scrollBy(afterPx.x - focusX.toInt(), afterPx.y - focusY.toInt())
-    }
-
-    // Temporary diagnostics: confirming whether the AAOS emulator host
-    // calls any of these at all during a drag (the user reports dragging
-    // doesn't move the map there) -- remove once that's established.
-    override fun onFling(velocityX: Float, velocityY: Float) {
-        android.util.Log.d("MapSearchScreen", "onFling velocityX=$velocityX velocityY=$velocityY")
-    }
-
-    override fun onClick(x: Float, y: Float) {
-        android.util.Log.d("MapSearchScreen", "onClick x=$x y=$y")
     }
 
     override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
@@ -725,10 +710,7 @@ class MapSearchScreen(
             .setContentTemplate(summaryContentTemplate(snapshot))
             .setMapController(
                 MapController.Builder()
-                    .setPanModeListener { inPanMode ->
-                        android.util.Log.d("MapSearchScreen", "panModeListener inPanMode=$inPanMode")
-                        isInPanMode = inPanMode
-                    }
+                    .setPanModeListener { inPanMode -> isInPanMode = inPanMode }
                     // Required for the host to deliver ANY SurfaceCallback
                     // touch input at all (onClick/onScroll/onScale/onFling
                     // all stayed silent without this, confirmed live) --
