@@ -137,9 +137,11 @@ class MapSearchScreen(
             repository.error.collect { invalidate() }
         }
         lifecycleScope.launch {
-            locationUpdates(carContext).collect { fix ->
-                lastBearing = fix.bearingDegrees
-                repository.session.value?.let { renderMarkers(it) }
+            repository.bearing.collect { bearing ->
+                if (bearing != null) {
+                    lastBearing = bearing
+                    repository.session.value?.let { renderMarkers(it) }
+                }
             }
         }
     }
@@ -631,7 +633,7 @@ class MapSearchScreen(
 
         // A restrained, modern palette instead of a default hue wheel.
         @ColorInt
-        val COLOR_YOU = Color.parseColor("#00B8D4")
+        val COLOR_YOU = Color.parseColor("#9C27B0")
         @ColorInt
         val COLOR_REJECTED = Color.parseColor("#9E9E9E")
         @ColorInt
@@ -646,10 +648,10 @@ class MapSearchScreen(
         @ColorInt
         val ZONE_ACCENT = Color.parseColor("#268BCC")
 
-        const val CAR_ICON_DP = 40
+        const val CAR_ICON_DP = 56
         const val CANDIDATE_DIAMETER_DP = 48 // 12dp original prototype x4
         const val ZONE_ICON_DP = 32
-        const val DESTINATION_ICON_DP = 40
+        const val DESTINATION_ICON_DP = 56
 
         // The pin's tip in assets/destination.svg, as a fraction of its
         // 474x474 viewBox (computed directly from the source path's own
