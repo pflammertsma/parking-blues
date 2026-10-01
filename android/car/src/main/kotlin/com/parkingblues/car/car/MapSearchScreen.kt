@@ -644,10 +644,10 @@ class MapSearchScreen(
         @ColorInt
         val ZONE_ACCENT = Color.parseColor("#268BCC")
 
-        const val CAR_ICON_DP = 56
+        const val CAR_ICON_DP = 96
         const val CANDIDATE_DIAMETER_DP = 48 // 12dp original prototype x4
         const val ZONE_ICON_DP = 32
-        const val DESTINATION_ICON_DP = 80
+        const val DESTINATION_ICON_DP = 120
 
         // The pin's tip in assets/destination.svg, as a fraction of its
         // 474x474 viewBox (computed directly from the source path's own
@@ -756,25 +756,25 @@ class MapSearchScreen(
   private fun computeSummaryStrings(snapshot: SessionSnapshot): Pair<String, String> {
     val active = activeCandidates(snapshot)
     val nearby = active.filter { it.distanceFromYouM <= NEARBY_RADIUS_M }
-    val nearbyZones = clusterByZone(nearby)
-    val zoneCount = nearbyZones.size
-    val spotCount = nearby.size
+    val spotCount = nearby.sumOf { it.estimatedCapacity.coerceAtLeast(1) }
     val nearest = active.minByOrNull { it.distanceFromYouM }
+    val radiusInt = NEARBY_RADIUS_M.toInt()
 
-    val title = if (zoneCount > 0) {
-      "$zoneCount parking zone${if (zoneCount == 1) "" else "s"} nearby"
-    } else {
-      "No zones nearby"
+    val title = when (spotCount) {
+      0 -> "No parking spaces within ${radiusInt}m"
+      1 -> "1 parking space within ${radiusInt}m"
+      else -> "$spotCount parking spaces within ${radiusInt}m"
     }
 
     val subtitle = if (nearest != null) {
-      if (zoneCount > 0) {
-        "$spotCount spot${if (spotCount == 1) "" else "s"} available · nearest ${nearest.distanceFromYouM.toInt()} m"
+      val nearestM = (Math.round(nearest.distanceFromYouM / 10.0) * 10).toInt().coerceAtLeast(10)
+      if (spotCount > 0) {
+        "Nearest space: ~${nearestM}m"
       } else {
-        "Nearest available ${nearest.distanceFromYouM.toInt()} m"
+        "Nearest available: ~${nearestM}m"
       }
     } else {
-      "All nearby zones checked"
+      "All parking spaces checked"
     }
     return title to subtitle
   }
