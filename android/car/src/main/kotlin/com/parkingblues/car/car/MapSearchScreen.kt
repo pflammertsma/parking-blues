@@ -715,12 +715,6 @@ class MapSearchScreen(
     override fun onGetTemplate(): Template {
         val snapshot = repository.session.value ?: return errorOrEmptyTemplate()
 
-        if (snapshot.state == SessionState.EXHAUSTED) {
-            return MessageTemplate.Builder(
-                "No more candidates nearby, even after widening the search radius."
-            ).setHeaderAction(Action.BACK).build()
-        }
-
         return MapWithContentTemplate.Builder()
             // A content template isn't optional here -- tried omitting it
             // (see git history), which throws IllegalStateException:
@@ -777,6 +771,9 @@ class MapSearchScreen(
      * below is the fallback.
      */
   private fun computeSummaryTitle(snapshot: SessionSnapshot): String {
+    if (snapshot.state == SessionState.EXHAUSTED) {
+      return "No more candidates nearby"
+    }
     val active = activeCandidates(snapshot)
     val nearby = active.filter { it.distanceFromYouM <= NEARBY_RADIUS_M }
     val spotCount = nearby.sumOf { it.estimatedCapacity.coerceAtLeast(1) }
