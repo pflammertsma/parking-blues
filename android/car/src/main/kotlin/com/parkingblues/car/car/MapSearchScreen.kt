@@ -309,13 +309,6 @@ class MapSearchScreen(
         map.overlays.removeAll(polygons)
         polygons.clear()
 
-        markers += Marker(map).apply {
-            position = GeoPoint(snapshot.origin.lat, snapshot.origin.lon)
-            title = "Destination"
-            icon = destinationMarkerIcon
-            setAnchor(DESTINATION_ANCHOR_X, DESTINATION_ANCHOR_Y) // the pin's tip, not its bounding-box center
-            setInfoWindow(null)
-        }.also { map.overlays.add(it) }
 
     // Visited/checked spots grouped into greyed-out zone outlines.
     // Parking icons are removed for visited zones; icons only show for unvisited zones.
@@ -352,17 +345,26 @@ class MapSearchScreen(
             }.also { map.overlays.add(it) }
         }
 
-        // "You" (car) marker drawn LAST so it is always on top of all other markers and zones
-        val currentBearing = repository.bearing.value ?: lastBearing ?: 0f
-        markers += Marker(map).apply {
-            position = GeoPoint(snapshot.you.lat, snapshot.you.lon)
-            title = "You"
-            icon = youMarkerIcon
-            setAnchor(0.5f, 0.5f)
-            rotation = -currentBearing // osmdroid Marker.draw applies -mBearing to canvas rotate
-            setFlat(true) // stays map-relative, not screen-relative
-            setInfoWindow(null)
-        }.also { map.overlays.add(it) }
+    // Destination marker drawn above parking zones so it is never obscured
+    markers += Marker(map).apply {
+      position = GeoPoint(snapshot.origin.lat, snapshot.origin.lon)
+      title = "Destination"
+      icon = destinationMarkerIcon
+      setAnchor(DESTINATION_ANCHOR_X, DESTINATION_ANCHOR_Y) // the pin's tip, not its bounding-box center
+      setInfoWindow(null)
+    }.also { map.overlays.add(it) }
+
+    // "You" marker drawn LAST so it is always on top of all other markers and zones
+    val currentBearing = repository.bearing.value ?: lastBearing ?: 0f
+    markers += Marker(map).apply {
+      position = GeoPoint(snapshot.you.lat, snapshot.you.lon)
+      title = "You"
+      icon = youMarkerIcon
+      setAnchor(0.5f, 0.5f)
+      rotation = -currentBearing // osmdroid Marker.draw applies -mBearing to canvas rotate
+      setFlat(true) // stays map-relative, not screen-relative
+      setInfoWindow(null)
+    }.also { map.overlays.add(it) }
 
         if (isFollowingUser) {
             val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
@@ -645,7 +647,7 @@ class MapSearchScreen(
         const val CAR_ICON_DP = 56
         const val CANDIDATE_DIAMETER_DP = 48 // 12dp original prototype x4
         const val ZONE_ICON_DP = 32
-        const val DESTINATION_ICON_DP = 56
+        const val DESTINATION_ICON_DP = 80
 
         // The pin's tip in assets/destination.svg, as a fraction of its
         // 474x474 viewBox (computed directly from the source path's own
