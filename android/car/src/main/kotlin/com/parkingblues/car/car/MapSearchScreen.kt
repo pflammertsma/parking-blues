@@ -297,16 +297,6 @@ class MapSearchScreen(
         polygons.clear()
 
         markers += Marker(map).apply {
-            position = GeoPoint(snapshot.you.lat, snapshot.you.lon)
-            title = "You"
-            icon = youMarkerIcon
-            setAnchor(0.5f, 0.5f)
-            rotation = lastBearing ?: 0f // no known heading (stationary/test point) -- points "up"
-            setFlat(true) // stays map-relative, not screen-relative
-            setInfoWindow(null)
-        }.also { map.overlays.add(it) }
-
-        markers += Marker(map).apply {
             position = GeoPoint(snapshot.origin.lat, snapshot.origin.lon)
             title = "Destination"
             icon = destinationMarkerIcon
@@ -368,6 +358,18 @@ class MapSearchScreen(
                 setInfoWindow(null)
             }.also { map.overlays.add(it) }
         }
+
+        // "You" (car) marker drawn LAST so it is always on top of all other markers and zones
+        val currentBearing = repository.bearing.value ?: lastBearing ?: 0f
+        markers += Marker(map).apply {
+            position = GeoPoint(snapshot.you.lat, snapshot.you.lon)
+            title = "You"
+            icon = youMarkerIcon
+            setAnchor(0.5f, 0.5f)
+            rotation = currentBearing
+            setFlat(true) // stays map-relative, not screen-relative
+            setInfoWindow(null)
+        }.also { map.overlays.add(it) }
 
         if (isFollowingUser) {
             val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
