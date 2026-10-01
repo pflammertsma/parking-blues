@@ -45,15 +45,15 @@ val TEST_LOCATION: Pair<Double, Double> = getSimulatedRouteStart()
 
 /**
  * Speed for test drive simulation in meters per second.
- * 15 km/h = ~4.17 m/s, matching user preference (10-20 km/h) to allow
- * observing the car marker turning and parking spots/zones auto-rejecting.
+ * 30 km/h = ~4.17 m/s, to allow observing the car marker turning and parking
+ * spots/zones auto-rejecting.
  */
-const val SIMULATED_SPEED_MPS: Double = 20.0 / 3.6
+const val SIMULATED_SPEED_MPS: Double = 30.0 / 3.6
 const val SIMULATED_STEP_INTERVAL_MS: Long = 1000L
 
 /**
  * Precomputes step-by-step GPS fixes along the simulated route with realistic
- * coordinates and bearing (heading) at ~15 km/h.
+ * coordinates and bearing (heading) at ~30 km/h.
  */
 fun getSimulatedRouteSteps(): List<GpsFix> {
     val steps = mutableListOf<GpsFix>()

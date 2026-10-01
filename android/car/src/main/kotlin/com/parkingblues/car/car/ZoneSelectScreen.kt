@@ -37,7 +37,7 @@ class ZoneSelectScreen(
         items.addItem(
             Row.Builder()
                 .setTitle("Simulate test drive (Zurich)")
-                .addText("Live 15 km/h test drive with car marker & auto-rejection")
+                .addText("Live 30 km/h test drive with car marker & auto-rejection")
                 .setOnClickListener {
                     setTestLocationEnabled(carContext, true)
                     startSearch(ZoneFilter.BOTH)
