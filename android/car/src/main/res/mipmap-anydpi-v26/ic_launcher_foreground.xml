@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Converted from icon.svg at the repo root (474x474 viewBox, unchanged
+     path data/colors): a diagonally split blue/white "P" mark. The two
+     background triangles fully tile the canvas, so this is used as the
+     entire foreground layer with a matching flat background behind it,
+     rather than a small centered glyph over a separate backdrop color. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="474"
+    android:viewportHeight="474">
+  <path
+      android:fillColor="#FFFFFF"
+      android:pathData="M 0,0 H 474 V 474" />
+  <path
+      android:fillColor="#268BCC"
+      android:pathData="M 0,0 V 474 H 474" />
+  <!-- scale/translate copied directly from icon.svg's own
+       transform="matrix(2.0930654,0,0,2.0930654,-76.765784,-153.73804)"
+       on the letter paths (SVG matrix(a,0,0,d,e,f) == Android group
+       scaleX=a scaleY=d translateX=e translateY=f when pivot is 0,0,
+       which is the default here). -->
+  <group
+      android:scaleX="2.0930654"
+      android:scaleY="2.0930654"
+      android:translateX="-76.765784"
+      android:translateY="-153.73804">
+    <path
+        android:fillColor="#268BCC"
+        android:pathData="M 116.78919,122.75496 116.78919,150.44641 140.22733,173.88455 140.22733,144.03603 167.69593,144.03603 C 171.57093,144.03603 174.75793,145.31751 177.25793,147.88001 179.82043,150.44251 181.10191,153.47383 181.10191,156.97383 L 181.10191,161.19209 C 181.10191,164.81709 179.82043,167.87981 177.25793,170.37981 174.82043,172.75481 171.60203,173.94208 167.60203,173.94208 L 140.28486,173.94208 161.56659,195.22382 170.69546,195.22382 C 180.82046,195.28632 189.28971,191.47329 196.10221,183.78579 201.72721,177.28579 204.53939,169.75459 204.53939,161.19209 L 204.53939,156.97383 C 204.60189,147.53633 201.41423,139.41116 194.97673,132.59866 188.47673,125.9737 180.41436,122.6925 170.78936,122.75496 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 116.78919,150.44641 116.78919,250.72376 140.22733,250.72376 140.22733,195.22382 161.56659,195.22382 140.28486,173.94208 140.22733,173.94208 140.22733,173.88455 Z" />
+  </group>
+</vector>
