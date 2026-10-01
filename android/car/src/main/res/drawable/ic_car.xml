@@ -18,19 +18,19 @@
         android:fillColor="#212121"
         android:pathData="M35,30 A2,2 0,0,1 39,30 V37 A2,2 0,0,1 35,37 Z" />
 
-    <!-- Car Body -->
+    <!-- Car Body (Vibrant Purple) -->
     <path
-        android:fillColor="#00B8D4"
+        android:fillColor="#9C27B0"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.5"
+        android:strokeWidth="1.8"
         android:pathData="M16,6 C13,6 12,9 12,12 L12,37 C12,41 14,43 18,43 L30,43 C34,43 36,41 36,37 L36,12 C36,9 35,6 32,6 Z" />
 
-    <!-- Side Mirrors -->
+    <!-- Side Mirrors (Deep Purple) -->
     <path
-        android:fillColor="#00838F"
+        android:fillColor="#6A1B9A"
         android:pathData="M10,13 C9,13 8.5,14 8.5,15 C8.5,16 9,17 10,17 L12,16 L12,14 Z" />
     <path
-        android:fillColor="#00838F"
+        android:fillColor="#6A1B9A"
         android:pathData="M38,13 C39,13 39.5,14 39.5,15 C39.5,16 39,17 38,17 L36,16 L36,14 Z" />
 
     <!-- Headlights (Yellow/White Front) -->
@@ -46,9 +46,9 @@
         android:fillColor="#1A2733"
         android:pathData="M14.5,17 L16.5,11 C17,10.5 19,10 24,10 C29,10 31,10.5 31.5,11 L33.5,17 Z" />
 
-    <!-- Roof -->
+    <!-- Roof (Rich Purple) -->
     <path
-        android:fillColor="#0097A7"
+        android:fillColor="#7B1FA2"
         android:pathData="M15,18 L33,18 L32.5,30 L15.5,30 Z" />
 
     <!-- Rear Window -->
