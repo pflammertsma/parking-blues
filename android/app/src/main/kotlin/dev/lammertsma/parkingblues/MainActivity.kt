@@ -60,6 +60,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import dev.lammertsma.parkingblues.car.location.HeadingTracker
+import dev.lammertsma.parkingblues.car.location.compassHeadings
 import dev.lammertsma.parkingblues.car.car.EXTRA_SHOW_PARKED
 import dev.lammertsma.parkingblues.car.car.cancelExpiryReminder
 import dev.lammertsma.parkingblues.car.car.clearParkedSpot
@@ -151,6 +155,10 @@ class MainActivity : ComponentActivity() {
     // move `you` and auto-reject spots as if the user were driving past).
     private val browsing = mutableStateOf(false)
 
+    // Phone UI: GPS course while moving, the compass while standing still.
+    private val headingTracker = HeadingTracker(useCompass = true)
+    private val heading = mutableStateOf<Float?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -169,6 +177,7 @@ class MainActivity : ComponentActivity() {
                     onGetDirections = { spot -> openDirections(spot) },
                     onFoundCar = { onFoundCar() },
                     userLocation = userLocation.value,
+                    heading = heading.value,
                     onZoneSelected = { zone -> switchZone(zone) },
                     onSearchHere = { lat, lon -> searchHere(lat, lon) },
                     onRecenter = { recenter() },
@@ -189,6 +198,14 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 )
+            }
+        }
+        // The compass only runs while the screen is visible.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                compassHeadings(this@MainActivity) { userLocation.value }.collect { azimuth ->
+                    heading.value = headingTracker.onCompass(azimuth)
+                }
             }
         }
         if (isTestLocationEnabled(this) || hasLocationPermission()) {
@@ -238,8 +255,10 @@ class MainActivity : ComponentActivity() {
     private fun startLocationUpdates() {
         locationJob?.cancel()
         locationJob = lifecycleScope.launch {
-            locationUpdates(this@MainActivity).collect { (lat, lon) ->
+            locationUpdates(this@MainActivity).collect { fix ->
+                val (lat, lon) = fix.lat to fix.lon
                 userLocation.value = lat to lon
+                heading.value = headingTracker.onFix(fix)
                 if (!browsing.value) repository.updatePosition(lat, lon)
             }
         }
@@ -297,6 +316,7 @@ private fun AppScaffold(
     currentZone: ZoneFilter,
     useTestLocation: Boolean,
     userLocation: Pair<Double, Double>?,
+    heading: Float?,
     onGetDirections: (ParkedSpot) -> Unit,
     onFoundCar: () -> Unit,
     onZoneSelected: (ZoneFilter) -> Unit,
@@ -405,6 +425,7 @@ private fun AppScaffold(
             SearchScreenContent(
                 repository = repository,
                 userLocation = userLocation,
+                heading = heading,
                 contentPadding = innerPadding,
                 onSearchHere = onSearchHere,
                 onRecenter = onRecenter,
@@ -417,6 +438,7 @@ private fun AppScaffold(
 private fun SearchScreenContent(
     repository: ParkingSessionRepository,
     userLocation: Pair<Double, Double>?,
+    heading: Float?,
     contentPadding: PaddingValues,
     onSearchHere: (Double, Double) -> Unit,
     onRecenter: () -> Unit,
@@ -452,6 +474,7 @@ private fun SearchScreenContent(
         ParkingMapView(
             repository = repository,
             userLocation = userLocation,
+            heading = heading,
             mapState = mapState,
             modifier = Modifier.fillMaxSize(),
         )

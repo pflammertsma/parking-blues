@@ -9,6 +9,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlin.math.hypot
@@ -61,12 +62,14 @@ class MapUiState {
 fun ParkingMapView(
     repository: ParkingSessionRepository,
     userLocation: Pair<Double, Double>?,
+    heading: Float?,
     mapState: MapUiState,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val session by repository.session.collectAsStateWithLifecycle()
-    val bearing by repository.bearing.collectAsStateWithLifecycle()
+    val currentHeading by rememberUpdatedState(heading)
+    val youMarker = remember { arrayOfNulls<Marker>(1) }
 
     val mapView = remember {
         MapView(context).apply {
@@ -142,14 +145,21 @@ fun ParkingMapView(
         if (mapState.following) mapView.controller.animateTo(GeoPoint(user.first, user.second))
     }
 
-    LaunchedEffect(session, bearing, userLocation) {
+    // Turning the arrow must not rebuild every overlay (the compass fires many
+    // times a second): just rotate the existing marker.
+    LaunchedEffect(heading) {
+        youMarker[0]?.rotation = -(heading ?: 0f)
+        mapView.invalidate()
+    }
+
+    LaunchedEffect(session, userLocation) {
         val snapshot = session ?: return@LaunchedEffect
         // The "you" marker comes from the device's own position, not the
         // session's: when browsing a searched area the session's `you` is
         // just the search point.
         val you = userLocation?.let { GeoPoint(it.first, it.second) }
             ?: GeoPoint(snapshot.you.lat, snapshot.you.lon)
-        renderParkingOverlays(context, mapView, snapshot, you, bearing ?: 0f, markers, polygons)
+        youMarker[0] = renderParkingOverlays(context, mapView, snapshot, you, currentHeading ?: 0f, markers, polygons)
         if (framedForSessionId != snapshot.sessionId) {
             val searchCenter = GeoPoint(snapshot.origin.lat, snapshot.origin.lon)
             val frame = {
@@ -187,10 +197,10 @@ private fun renderParkingOverlays(
     map: MapView,
     snapshot: SessionSnapshot,
     you: GeoPoint,
-    bearing: Float,
+    heading: Float,
     markers: MutableList<Marker>,
     polygons: MutableList<Polygon>,
-) {
+): Marker {
     map.overlays.removeAll(markers)
     markers.clear()
     map.overlays.removeAll(polygons)
@@ -218,7 +228,7 @@ private fun renderParkingOverlays(
         markers += Marker(map).apply {
             position = MapClustering.centroidLatLng(cluster.segments)
             title = MapClustering.clusterTitle(cluster)
-            icon = MapIcons.zoneIcon(context, cluster.zoneType)
+            icon = MapIcons.zoneIcon(context, cluster.zoneType, MapIcons.PHONE_ICON_SCALE)
             setAnchor(0.5f, 0.5f)
             setInfoWindow(null)
         }.also { map.overlays.add(it) }
@@ -227,20 +237,23 @@ private fun renderParkingOverlays(
     markers += Marker(map).apply {
         position = GeoPoint(snapshot.origin.lat, snapshot.origin.lon)
         title = "Destination"
-        icon = MapIcons.destinationMarkerIcon(context)
+        icon = MapIcons.destinationMarkerIcon(context, MapIcons.PHONE_ICON_SCALE)
         setAnchor(MapIcons.DESTINATION_ANCHOR_X, MapIcons.DESTINATION_ANCHOR_Y)
         setInfoWindow(null)
     }.also { map.overlays.add(it) }
 
-    markers += Marker(map).apply {
+    val youMarker = Marker(map).apply {
         position = you
         title = "You"
-        icon = MapIcons.youMarkerIcon(context)
+        icon = MapIcons.youMarkerIcon(context, MapIcons.PHONE_ICON_SCALE)
         setAnchor(0.5f, 0.5f)
-        rotation = -bearing
+        rotation = -heading
         setFlat(true)
         setInfoWindow(null)
-    }.also { map.overlays.add(it) }
+    }
+    markers += youMarker
+    map.overlays.add(youMarker)
 
     map.invalidate()
+    return youMarker
 }

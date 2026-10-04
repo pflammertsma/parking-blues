@@ -68,7 +68,7 @@ fun getSimulatedRouteSteps(): List<GpsFix> {
             val frac = i.toDouble() / count
             val lat = w1.first + frac * (w2.first - w1.first)
             val lon = w1.second + frac * (w2.second - w1.second)
-            steps.add(GpsFix(lat, lon, bearingDegrees = bearing))
+            steps.add(GpsFix(lat, lon, bearingDegrees = bearing, speedMps = SIMULATED_SPEED_MPS.toFloat()))
         }
     }
     return steps

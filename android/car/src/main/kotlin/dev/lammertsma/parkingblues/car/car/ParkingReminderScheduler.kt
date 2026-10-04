@@ -55,8 +55,10 @@ private fun ensureNotificationChannel(context: Context) {
 }
 
 private fun parkedViewIntent(context: Context): PendingIntent {
-    val intent = Intent().apply {
-        setClassName(context.packageName, "${context.packageName}.MainActivity")
+    // The app's own launcher intent, not a class name built from the package:
+    // debug builds use an applicationId suffix (.debug) that the Kotlin
+    // package doesn't have.
+    val intent = (context.packageManager.getLaunchIntentForPackage(context.packageName) ?: Intent()).apply {
         putExtra(EXTRA_SHOW_PARKED, true)
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
     }

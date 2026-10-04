@@ -21,7 +21,21 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
-data class GpsFix(val lat: Double, val lon: Double, val bearingDegrees: Float?)
+data class GpsFix(
+  val lat: Double,
+  val lon: Double,
+  val bearingDegrees: Float?,
+  val speedMps: Float? = null,
+  val bearingAccuracyDegrees: Float? = null,
+)
+
+private fun Location.toFix() = GpsFix(
+  lat = latitude,
+  lon = longitude,
+  bearingDegrees = if (hasBearing()) bearing else null,
+  speedMps = if (hasSpeed()) speed else null,
+  bearingAccuracyDegrees = if (hasBearingAccuracy()) bearingAccuracyDegrees else null,
+)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @SuppressLint("MissingPermission")
@@ -44,7 +58,7 @@ fun locationUpdates(context: Context): Flow<GpsFix> {
           val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
           val lmListener = object : LocationListener {
             override fun onLocationChanged(loc: Location) {
-              trySend(GpsFix(loc.latitude, loc.longitude, if (loc.hasBearing()) loc.bearing else null))
+              trySend(loc.toFix())
             }
             @Deprecated("Deprecated in Java")
             override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
@@ -67,7 +81,7 @@ fun locationUpdates(context: Context): Flow<GpsFix> {
           val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
               result.lastLocation?.let {
-                trySend(GpsFix(it.latitude, it.longitude, if (it.hasBearing()) it.bearing else null))
+                trySend(it.toFix())
               }
             }
           }
@@ -79,7 +93,7 @@ fun locationUpdates(context: Context): Flow<GpsFix> {
             lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER),
           ).maxByOrNull { it.time }
           initial?.let {
-            trySend(GpsFix(it.latitude, it.longitude, if (it.hasBearing()) it.bearing else null))
+            trySend(it.toFix())
           }
 
           awaitClose {

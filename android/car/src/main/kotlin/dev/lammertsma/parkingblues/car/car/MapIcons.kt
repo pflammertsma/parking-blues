@@ -1,5 +1,6 @@
 package dev.lammertsma.parkingblues.car.car
 
+import kotlin.math.roundToInt
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -95,11 +96,20 @@ object MapIcons {
         return BitmapDrawable(context.resources, bitmap).apply { setBounds(0, 0, diameterPx, diameterPx) }
     }
 
-    fun blueZoneIcon(context: Context): Drawable = vectorDrawableIcon(context, R.drawable.ic_zone_blue, ZONE_ICON_DP)
-    fun whiteZoneIcon(context: Context): Drawable = vectorDrawableIcon(context, R.drawable.ic_zone_white, ZONE_ICON_DP)
+    /** The sizes above are tuned for the projected car map, which is viewed
+     *  from a distance; a handheld phone map wants noticeably smaller markers. */
+    const val PHONE_ICON_SCALE = 0.5f
 
-    fun zoneIcon(context: Context, zoneType: ZoneType): Drawable =
-        if (zoneType == ZoneType.BLUE) blueZoneIcon(context) else whiteZoneIcon(context)
+    private fun scaledDp(dp: Int, scale: Float): Int = (dp * scale).roundToInt()
+
+    fun blueZoneIcon(context: Context, scale: Float = 1f): Drawable =
+        vectorDrawableIcon(context, R.drawable.ic_zone_blue, scaledDp(ZONE_ICON_DP, scale))
+
+    fun whiteZoneIcon(context: Context, scale: Float = 1f): Drawable =
+        vectorDrawableIcon(context, R.drawable.ic_zone_white, scaledDp(ZONE_ICON_DP, scale))
+
+    fun zoneIcon(context: Context, zoneType: ZoneType, scale: Float = 1f): Drawable =
+        if (zoneType == ZoneType.BLUE) blueZoneIcon(context, scale) else whiteZoneIcon(context, scale)
 
     /** Same zone glyph, greyed out -- used for already-checked/rejected
      *  clusters instead of a second, unrelated "rejected" icon. */
@@ -110,11 +120,13 @@ object MapIcons {
 
     /** Purple triangle with rounded corners, rotated via Marker.rotation to
      *  indicate position and heading. */
-    fun youMarkerIcon(context: Context): Drawable = vectorDrawableIcon(context, R.drawable.ic_location_triangle, CAR_ICON_DP)
+    fun youMarkerIcon(context: Context, scale: Float = 1f): Drawable =
+        vectorDrawableIcon(context, R.drawable.ic_location_triangle, scaledDp(CAR_ICON_DP, scale))
 
     /** assets/destination.svg's pin (just the pin shape, not the spelled-out
      *  "Destination" word also in that source file). */
-    fun destinationMarkerIcon(context: Context): Drawable = vectorDrawableIcon(context, R.drawable.ic_destination, DESTINATION_ICON_DP)
+    fun destinationMarkerIcon(context: Context, scale: Float = 1f): Drawable =
+        vectorDrawableIcon(context, R.drawable.ic_destination, scaledDp(DESTINATION_ICON_DP, scale))
 
     fun rejectedMarkerIcon(context: Context): Drawable = circleMarkerIcon(context, COLOR_REJECTED, CANDIDATE_DIAMETER_DP)
 

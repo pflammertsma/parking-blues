@@ -44,8 +44,8 @@ The algorithm (candidate generation, DBSCAN clustering, scoring, retargeting hys
 
 ### Module Layout
 * `android/shared/`: Kotlin Multiplatform (KMP) data models (`@Serializable`) and Ktor HTTP client (`ParkingApiClient`).
-* `android/car/`: Shared Car App Library screens (`MapSearchScreen`, `ZoneSelectScreen`), location helpers, and osmdroid map renderer.
-* `android/app/`: Phone module (Jetpack Compose) + Android Auto entry point.
+* `android/car/`: Shared Car App Library screens (`MapSearchScreen`), location helpers, clustering/icon helpers shared with the phone map, and osmdroid map renderer.
+* `android/app/`: Phone module (Jetpack Compose map UI) + Android Auto entry point.
 * `android/automotive/`: Android Automotive OS (AAOS) entry point (`CarAppActivity`). Shares the same `applicationId` (`dev.lammertsma.parkingblues`) as `:app`.
 
 ### Critical Gotchas
@@ -70,6 +70,16 @@ The algorithm (candidate generation, DBSCAN clustering, scoring, retargeting hys
 7. **Android Auto Manifest Meta-Data:**
    * AAOS uses `<meta-data android:name="com.android.automotive" android:resource="@xml/automotive_app_desc" />`.
    * Android Auto in `:app` requires `<meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />`. Missing this silently drops the app from the Android Auto launcher.
+8. **Sideloaded Car App Library apps never appear in a real car:**
+   * Android Auto's "Unknown sources" developer option does not apply to template apps. Real-vehicle testing needs a Google Play internal test track or Internal App Sharing; use the Desktop Head Unit otherwise (see `android/README.md`).
+9. **Template validation happens at runtime:**
+   * Car App Library throws in `onGetTemplate()` for invalid models, crashing the screen on every launch. Example: a `Row` inside a `PaneTemplate` cannot have a click listener (use a `ListTemplate`). Test every template change on the DHU.
+10. **Phone and AAOS builds cannot be one artifact:**
+    * Separate `:app` and `:automotive` bundles under one `applicationId`, uploaded to different Play tracks. `CarAppActivity` extends `FragmentActivity`, so `androidx.fragment` must stay in `:automotive` (it is excluded from `:app`).
+11. **Debug builds use `applicationIdSuffix = ".debug"`:**
+    * Never build class names from `context.packageName` (it no longer equals the Kotlin package); use `packageManager.getLaunchIntentForPackage` or explicit class references. adb commands for debug builds use `dev.lammertsma.parkingblues.debug/<fully.qualified.Class>`.
+12. **Marker sizes differ per surface:**
+    * `MapIcons` sizes are tuned for the projected car map; the phone passes `MapIcons.PHONE_ICON_SCALE` to render them smaller.
 
 ---
 
@@ -103,11 +113,11 @@ emulator -avd Automotive_Portrait_API_34-ext9
 
 # Install & launch Android Automotive OS (AAOS)
 .\gradlew.bat :automotive:installDebug
-adb shell am start -n dev.lammertsma.parkingblues/androidx.car.app.activity.CarAppActivity
+adb shell am start -n dev.lammertsma.parkingblues.debug/androidx.car.app.activity.CarAppActivity
 
 # Install & launch Phone App / Android Auto entry
 .\gradlew.bat :app:installDebug
-adb shell am start -n dev.lammertsma.parkingblues/.MainActivity
+adb shell am start -n dev.lammertsma.parkingblues.debug/dev.lammertsma.parkingblues.MainActivity
 ```
 
 ---

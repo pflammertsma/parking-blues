@@ -13,12 +13,16 @@ import androidx.car.app.SurfaceContainer
 import androidx.car.app.annotations.ExperimentalCarApi
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
+import androidx.car.app.model.CarColor
+import androidx.car.app.model.CarIcon
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.car.app.navigation.model.MapController
+import androidx.core.graphics.drawable.IconCompat
+import dev.lammertsma.parkingblues.car.R
 import androidx.car.app.navigation.model.MapWithContentTemplate
 import androidx.lifecycle.lifecycleScope
 import dev.lammertsma.parkingblues.car.location.getLastZone
@@ -471,7 +475,11 @@ class MapSearchScreen(
                 ActionStrip.Builder()
                     .addAction(
                         Action.Builder()
-                            .setTitle("Recenter")
+                            .setIcon(
+                                CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_recenter))
+                                    .setTint(CarColor.DEFAULT)
+                                    .build()
+                            )
                             .setOnClickListener {
                                 isFollowingUser = true
                                 repository.session.value?.let { snap ->
@@ -481,25 +489,27 @@ class MapSearchScreen(
                             }
                             .build()
                     )
-                    .addAction(zoneAction())
                     .addAction(
                         Action.Builder()
                             .setTitle("Parked here")
                             .setOnClickListener { onParkedHereClicked() }
                             .build()
                     )
-                    .apply {
-                        // Dev-only shortcut (needed on emulators with no
-                        // phone to toggle test location from); not for drivers.
-                        if (isDebuggableBuild) {
-                            addAction(
-                                Action.Builder()
-                                    .setTitle("Test drive")
-                                    .setOnClickListener { startTestDrive() }
-                                    .build()
-                            )
-                        }
-                    }
+                    .addAction(
+                        Action.Builder()
+                            .setTitle("Zones")
+                            .setOnClickListener {
+                                screenManager.push(
+                                    ZoneScreen(
+                                        carContext,
+                                        currentZone,
+                                        onZoneSelected = { startSearch(it) },
+                                        onTestDrive = if (isDebuggableBuild) ({ startTestDrive() }) else null,
+                                    )
+                                )
+                            }
+                            .build()
+                    )
                     .build()
             )
             .build()
@@ -567,7 +577,7 @@ class MapSearchScreen(
     /**
      * Just the live summary, kept to a single row so the panel leaves as
      * much of the screen as possible to the map. Zone switching lives in
-     * the action strip (see zoneAction). A ListTemplate rather than a
+     * the Zones screen (see ZoneScreen). A ListTemplate rather than a
      * PaneTemplate: the host rejects click listeners on Pane rows.
      */
     private fun summaryContentTemplate(snapshot: SessionSnapshot): Template {
@@ -580,17 +590,6 @@ class MapSearchScreen(
             .setTitle("Parking Blues")
             .setHeaderAction(Action.APP_ICON)
             .setSingleList(items)
-            .build()
-    }
-
-    /** Shows the active zone and cycles Blue -> White -> Both on tap. */
-    private fun zoneAction(): Action {
-        val zones = ZoneFilter.entries
-        val label = currentZone.name.lowercase().replaceFirstChar { it.uppercase() } +
-            if (currentZone == ZoneFilter.BOTH) "" else " zones"
-        return Action.Builder()
-            .setTitle(label)
-            .setOnClickListener { startSearch(zones[(zones.indexOf(currentZone) + 1) % zones.size]) }
             .build()
     }
 

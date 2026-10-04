@@ -8,6 +8,7 @@ import androidx.car.app.Session
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import dev.lammertsma.parkingblues.car.HasParkingRepository
+import dev.lammertsma.parkingblues.car.location.HeadingTracker
 import dev.lammertsma.parkingblues.car.location.locationUpdates
 import kotlinx.coroutines.launch
 
@@ -40,9 +41,9 @@ class ParkingCarSession : Session() {
         carContext, Manifest.permission.ACCESS_FINE_LOCATION
     ) == PackageManager.PERMISSION_GRANTED
 
-    private var lastFixLat: Double? = null
-    private var lastFixLon: Double? = null
-    private var lastHeading: Float? = null
+    // In the car the phone's compass is meaningless (it sits in a cradle or
+    // cupholder), so heading is GPS course only and holds while stopped.
+    private val headingTracker = HeadingTracker(useCompass = false)
 
     private fun startLocationUpdates() {
         // Feed real GPS into the repository for as long as the car session
@@ -51,24 +52,7 @@ class ParkingCarSession : Session() {
         // continuous stream, not a one-shot fix).
         lifecycleScope.launch {
             locationUpdates(carContext).collect { fix ->
-                val prevLat = lastFixLat
-                val prevLon = lastFixLon
-                lastFixLat = fix.lat
-                lastFixLon = fix.lon
-
-                val bearing = fix.bearingDegrees ?: if (prevLat != null && prevLon != null) {
-                    val dist = dev.lammertsma.parkingblues.car.location.calculateDistanceMeters(prevLat, prevLon, fix.lat, fix.lon)
-                    if (dist >= 1.5) {
-                        val computed = dev.lammertsma.parkingblues.car.location.calculateBearingDegrees(prevLat, prevLon, fix.lat, fix.lon)
-                        lastHeading = computed
-                        computed
-                    } else {
-                        lastHeading
-                    }
-                } else {
-                    lastHeading
-                }
-                repository.updatePosition(fix.lat, fix.lon, bearing)
+                repository.updatePosition(fix.lat, fix.lon, headingTracker.onFix(fix))
             }
         }
     }
