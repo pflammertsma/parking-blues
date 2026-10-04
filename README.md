@@ -65,11 +65,11 @@ To run the web frontend locally, navigate to `http://localhost:5000` in your bro
 ```powershell
 # Build and install on Android Automotive OS (AAOS emulator or head unit)
 .\gradlew.bat :automotive:installDebug
-adb shell am start -n com.parkingblues.app/androidx.car.app.activity.CarAppActivity
+adb shell am start -n dev.lammertsma.parkingblues/androidx.car.app.activity.CarAppActivity
 
 # Build and install on Phone / Android Auto
 .\gradlew.bat :app:installDebug
-adb shell am start -n com.parkingblues.app/.MainActivity
+adb shell am start -n dev.lammertsma.parkingblues/.MainActivity
 
 # Run Android unit tests across all modules
 .\gradlew.bat testDebugUnitTest

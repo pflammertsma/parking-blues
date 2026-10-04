@@ -52,8 +52,8 @@ kotlin {
 }
 
 android {
-    namespace = "com.parkingblues.shared"
-    compileSdk = 35
+    namespace = "dev.lammertsma.parkingblues.shared"
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 28

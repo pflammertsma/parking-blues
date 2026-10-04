@@ -46,7 +46,7 @@ The algorithm (candidate generation, DBSCAN clustering, scoring, retargeting hys
 * `android/shared/`: Kotlin Multiplatform (KMP) data models (`@Serializable`) and Ktor HTTP client (`ParkingApiClient`).
 * `android/car/`: Shared Car App Library screens (`MapSearchScreen`, `ZoneSelectScreen`), location helpers, and osmdroid map renderer.
 * `android/app/`: Phone module (Jetpack Compose) + Android Auto entry point.
-* `android/automotive/`: Android Automotive OS (AAOS) entry point (`CarAppActivity`). Shares the same `applicationId` (`com.parkingblues.app`) as `:app`.
+* `android/automotive/`: Android Automotive OS (AAOS) entry point (`CarAppActivity`). Shares the same `applicationId` (`dev.lammertsma.parkingblues`) as `:app`.
 
 ### Critical Gotchas
 1. **CAL Host Rate Limiting:**
@@ -103,11 +103,11 @@ emulator -avd Automotive_Portrait_API_34-ext9
 
 # Install & launch Android Automotive OS (AAOS)
 .\gradlew.bat :automotive:installDebug
-adb shell am start -n com.parkingblues.app/androidx.car.app.activity.CarAppActivity
+adb shell am start -n dev.lammertsma.parkingblues/androidx.car.app.activity.CarAppActivity
 
 # Install & launch Phone App / Android Auto entry
 .\gradlew.bat :app:installDebug
-adb shell am start -n com.parkingblues.app/.MainActivity
+adb shell am start -n dev.lammertsma.parkingblues/.MainActivity
 ```
 
 ---

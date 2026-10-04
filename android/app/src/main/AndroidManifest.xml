@@ -60,7 +60,7 @@
             android:resource="@xml/automotive_app_desc" />
 
         <service
-            android:name="com.parkingblues.car.car.ParkingCarAppService"
+            android:name="dev.lammertsma.parkingblues.car.car.ParkingCarAppService"
             android:exported="true"
             android:foregroundServiceType="location">
             <intent-filter>

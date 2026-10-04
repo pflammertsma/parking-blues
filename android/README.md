@@ -29,14 +29,14 @@ emulator -avd Automotive_Portrait_API_34-ext9
 
 # Build and install on AAOS emulator
 .\gradlew.bat :automotive:installDebug
-adb shell am start -n com.parkingblues.app/androidx.car.app.activity.CarAppActivity
+adb shell am start -n dev.lammertsma.parkingblues/androidx.car.app.activity.CarAppActivity
 ```
 
 ### Phone & Android Auto
 ```powershell
 # Build and install phone app
 .\gradlew.bat :app:installDebug
-adb shell am start -n com.parkingblues.app/.MainActivity
+adb shell am start -n dev.lammertsma.parkingblues/.MainActivity
 ```
 
 To test Android Auto projected onto a car screen using the Desktop Head Unit (DHU):

@@ -11,8 +11,8 @@ plugins {
 // Only the manifest wiring differs per platform (see android/README.md), so
 // that part stays in :app and :automotive; this module is just the code.
 android {
-    namespace = "com.parkingblues.car"
-    compileSdk = 35
+    namespace = "dev.lammertsma.parkingblues.car"
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 28

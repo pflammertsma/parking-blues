@@ -7,13 +7,13 @@ plugins {
 }
 
 android {
-    namespace = "com.parkingblues.app"
-    compileSdk = 35
+    namespace = "dev.lammertsma.parkingblues"
+    compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.parkingblues.app"
+        applicationId = "dev.lammertsma.parkingblues"
         minSdk = 28
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1"
     }

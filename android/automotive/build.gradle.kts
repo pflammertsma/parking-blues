@@ -6,17 +6,17 @@ plugins {
 }
 
 android {
-    namespace = "com.parkingblues.automotive"
-    compileSdk = 35
+    namespace = "dev.lammertsma.parkingblues.automotive"
+    compileSdk = 37
 
     defaultConfig {
         // Same applicationId as :app on purpose -- Google Play treats the
         // phone build and the Android Automotive OS build as two APKs/AABs
         // under one listing, published together, sharing one signing key.
         // See https://developer.android.com/training/cars/apps/automotive-os
-        applicationId = "com.parkingblues.app"
+        applicationId = "dev.lammertsma.parkingblues"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1"
     }
