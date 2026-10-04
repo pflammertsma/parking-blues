@@ -27,6 +27,7 @@ import androidx.car.app.navigation.model.MapWithContentTemplate
 import androidx.lifecycle.lifecycleScope
 import dev.lammertsma.parkingblues.car.location.getLastZone
 import dev.lammertsma.parkingblues.car.location.getSimulatedRouteInitialBearing
+import dev.lammertsma.parkingblues.car.location.getSimulatedRouteStart
 import dev.lammertsma.parkingblues.car.location.isTestLocationEnabled
 import dev.lammertsma.parkingblues.car.location.lastKnownLocation
 import dev.lammertsma.parkingblues.car.location.setLastZone
@@ -182,12 +183,13 @@ class MapSearchScreen(
      *  current position if a session is already live, otherwise falling
      *  back through the explicit retry coordinates / last known fix / the
      *  Zurich default -- same fallback chain ZoneSelectScreen used to use. */
-    private fun startSearch(zone: ZoneFilter) {
+    private fun startSearch(zone: ZoneFilter, at: Pair<Double, Double>? = null) {
         currentZone = zone
         setLastZone(carContext, zone)
         lifecycleScope.launch {
             val you = repository.session.value?.you
             val (lat, lon) = when {
+                at != null -> at
                 you != null -> you.lat to you.lon
                 retryLat != null && retryLon != null -> retryLat to retryLon
                 else -> lastKnownLocation(carContext) ?: (47.379198 to 8.531307)
@@ -198,14 +200,18 @@ class MapSearchScreen(
         }
     }
 
-    /** The "Simulate test drive" entry ZoneSelectScreen used to offer,
-     *  preserved here as an action instead of a separate screen: enables
-     *  the fixed test-driving-loop location source and searches BOTH
-     *  zones, so the clustering/auto-rejection behavior stays reachable
-     *  without a real device. */
-    private fun startTestDrive() {
-        setTestLocationEnabled(carContext, true)
-        startSearch(ZoneFilter.BOTH)
+    /** Debug-only: switches between the simulated Zurich drive and real
+     *  location, in sync with the phone's "Use test location" checkbox, and
+     *  restarts the search at the matching starting point. */
+    private fun setTestLocation(enabled: Boolean) {
+        setTestLocationEnabled(carContext, enabled)
+        if (enabled) {
+            startSearch(currentZone, at = getSimulatedRouteStart())
+        } else {
+            lifecycleScope.launch {
+                startSearch(currentZone, at = lastKnownLocation(carContext) ?: (47.379198 to 8.531307))
+            }
+        }
     }
 
     // -- SurfaceCallback: draw our own map onto the host-provided Surface --
@@ -504,12 +510,34 @@ class MapSearchScreen(
                                         carContext,
                                         currentZone,
                                         onZoneSelected = { startSearch(it) },
-                                        onTestDrive = if (isDebuggableBuild) ({ startTestDrive() }) else null,
                                     )
                                 )
                             }
                             .build()
                     )
+                    .apply {
+                        // Icon-only so it costs the strip almost no width.
+                        if (isDebuggableBuild) {
+                            addAction(
+                                Action.Builder()
+                                    .setIcon(
+                                        CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_more))
+                                            .setTint(CarColor.DEFAULT)
+                                            .build()
+                                    )
+                                    .setOnClickListener {
+                                        screenManager.push(
+                                            DeveloperScreen(
+                                                carContext,
+                                                testLocationEnabled = isTestLocationEnabled(carContext),
+                                                onTestLocationChanged = { setTestLocation(it) },
+                                            )
+                                        )
+                                    }
+                                    .build()
+                            )
+                        }
+                    }
                     .build()
             )
             .build()
@@ -585,11 +613,11 @@ class MapSearchScreen(
         // Parking data only covers the city of Zurich, so an empty result
         // far from it is expected -- say so instead of leaving a dead end.
         if (snapshot.state == SessionState.EXHAUSTED) summary.addText("Data covers the city of Zurich")
-        val items = ItemList.Builder().addItem(summary.build()).build()
+        val items = ItemList.Builder().addItem(summary.build())
         return ListTemplate.Builder()
             .setTitle("Parking Blues")
             .setHeaderAction(Action.APP_ICON)
-            .setSingleList(items)
+            .setSingleList(items.build())
             .build()
     }
 

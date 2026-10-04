@@ -90,7 +90,7 @@ Both share one `applicationId` (`dev.lammertsma.parkingblues`) and therefore one
 
 * **Signing:** `android/keystore/keystore.properties` and `android/keystore/parking-blues-release.jks` (both git-ignored). Back them up together; they are the upload key. Signing is wired through the `parkingblues.release-signing` convention plugin in `build-logic/`; without the properties file, release builds are left unsigned instead of failing. Enroll in **Play App Signing** when creating the listing so a lost upload key can be reset.
 * **Minification:** R8 and resource shrinking are on for release (`proguard-rules.pro` in each app module). Verify a release build on a device before shipping; shrinking can break reflection-based code without any build error.
-* **Version codes:** bump `versionCode` in both `app/build.gradle.kts` and `automotive/build.gradle.kts` for every upload.
+* **Version codes:** Play requires a unique code per uploaded artifact, so the phone and Automotive bundles cannot share one. Bump `parkingblues.release` in `gradle.properties` for every upload. Each form factor has its own block of a million codes so they can never collide: phone = `1,000,000 + release`, Automotive = `2,000,000 + release` (release 1 gives 1,000,001 and 2,000,001).
 * Debug and release builds have different application IDs (`.debug` suffix), so both can be installed at once. In Android Auto they appear as two apps (*Parking Blues* and *Parking Blues Dev*).
 * **Android Studio and the command line:** running Gradle from both at once causes file-lock failures (for example in `lint-cache`).
 

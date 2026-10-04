@@ -7,6 +7,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Shared with the other app module via gradle.properties; see the comment there.
+val releaseNumber = providers.gradleProperty("parkingblues.release").get().toInt()
+
 android {
     namespace = "dev.lammertsma.parkingblues"
     compileSdk = 37
@@ -15,8 +18,8 @@ android {
         applicationId = "dev.lammertsma.parkingblues"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 1 * 1_000_000 + releaseNumber
+        versionName = providers.gradleProperty("parkingblues.versionName").get()
     }
 
     buildTypes {

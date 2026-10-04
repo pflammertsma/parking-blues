@@ -95,32 +95,23 @@ fun calculateDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Doub
 }
 
 private const val PREFS_NAME = "parking_blues_debug"
-private const val KEY_USE_TEST_LOCATION = "use_test_location"
 
 val testModeFlow = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)
 val testModeTrigger = kotlinx.coroutines.flow.MutableStateFlow(0)
 
 /**
- * Per-install (SharedPreferences), so :app/Android Auto and :automotive
- * each remember their own choice independently. Default is false so real
- * location is used unless the user explicitly activates test mode.
+ * Whether the simulated Zurich drive replaces real location. In memory only,
+ * on purpose: it always starts off when the app process starts and is never
+ * saved, so a debugging session can't leave the app stuck in test mode. Shared
+ * by the phone UI and the car screens (same process), which both observe
+ * [testModeFlow].
  */
-fun isTestLocationEnabled(context: Context): Boolean {
-    val current = testModeFlow.value
-    if (current != null) return current
-    val saved = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        .getBoolean(KEY_USE_TEST_LOCATION, false)
-    testModeFlow.value = saved
-    return saved
-}
+fun isTestLocationEnabled(@Suppress("UNUSED_PARAMETER") context: Context): Boolean =
+    testModeFlow.value == true
 
-fun setTestLocationEnabled(context: Context, enabled: Boolean) {
+fun setTestLocationEnabled(@Suppress("UNUSED_PARAMETER") context: Context, enabled: Boolean) {
     testModeFlow.value = enabled
     testModeTrigger.value++
-    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        .edit()
-        .putBoolean(KEY_USE_TEST_LOCATION, enabled)
-        .apply()
 }
 
 private const val KEY_LAST_ZONE = "last_zone"

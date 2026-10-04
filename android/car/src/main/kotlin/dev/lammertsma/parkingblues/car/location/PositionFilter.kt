@@ -29,7 +29,7 @@ class PositionFilter(private val clock: () -> Long = System::currentTimeMillis) 
     /** Feed every fix; returns the filtered position to use. */
     fun onFix(fix: GpsFix): Pair<Double, Double> {
         val now = clock()
-        val elapsedS = ((now - lastAt) / 1000f).coerceIn(MIN_ELAPSED_S, MAX_ELAPSED_S)
+        val elapsedS = max((now - lastAt) / 1000f, MIN_ELAPSED_S)
         lastAt = now
 
         val current = position
@@ -56,6 +56,14 @@ class PositionFilter(private val clock: () -> Long = System::currentTimeMillis) 
         val distance = calculateDistanceMeters(current.first, current.second, fix.lat, fix.lon)
         val speed = fix.speedMps
 
+        // Farther than anything could travel in the time that passed: not a
+        // drive or a glitch but a teleport (test location switched on, long
+        // background gap). Snap instead of sliding for minutes.
+        if (distance > TELEPORT_MIN_M && distance > MAX_PLAUSIBLE_MPS * elapsedS) {
+            position = raw
+            return raw
+        }
+
         if (speed != null && speed < STATIONARY_MPS &&
             distance < max(accuracy ?: DEFAULT_NOISE_M, MIN_HOLD_M)
         ) {
@@ -81,7 +89,8 @@ class PositionFilter(private val clock: () -> Long = System::currentTimeMillis) 
         const val MIN_SLEW_MPS = 12f
         const val SLEW_SPEED_FACTOR = 1.5f
         const val SLEW_HEADROOM_MPS = 6f
+        const val TELEPORT_MIN_M = 300.0
+        const val MAX_PLAUSIBLE_MPS = 70.0
         private const val MIN_ELAPSED_S = 0.2f
-        private const val MAX_ELAPSED_S = 5f
     }
 }

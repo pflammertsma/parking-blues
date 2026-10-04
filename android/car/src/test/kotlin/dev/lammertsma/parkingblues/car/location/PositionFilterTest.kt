@@ -106,4 +106,24 @@ class PositionFilterTest {
         val p = f.onFix(fix(100.0, speed = null))
         assertTrue(metersFromStart(p) in 11.0..13.0, "moved ${metersFromStart(p)} m")
     }
+
+    @Test
+    fun anImpossibleJumpSnapsInsteadOfSliding() {
+        val f = filter()
+        now = 0; f.onFix(fix(0.0, speed = 8f))
+        now = 1000
+        // 5 km in one second can only be a teleport (e.g. test location enabled).
+        val p = f.onFix(fix(5_000.0, speed = 8f))
+        assertEquals(5_000.0, metersFromStart(p), 15.0) // test helper and haversine disagree by ~0.1%
+    }
+
+    @Test
+    fun aLongGapAllowsRealTravelWithoutSnapOrLag() {
+        val f = filter()
+        now = 0; f.onFix(fix(0.0, speed = 20f))
+        now = 5 * 60_000L
+        // 5 km in 5 minutes (~17 m/s) is a plausible drive after a gap: followed in full.
+        val p = f.onFix(fix(5_000.0, speed = 20f))
+        assertEquals(5_000.0, metersFromStart(p), 15.0) // test helper and haversine disagree by ~0.1%
+    }
 }

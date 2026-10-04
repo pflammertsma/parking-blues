@@ -51,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,6 +76,7 @@ import dev.lammertsma.parkingblues.car.location.lastKnownLocation
 import dev.lammertsma.parkingblues.car.location.locationUpdates
 import dev.lammertsma.parkingblues.car.location.setLastZone
 import dev.lammertsma.parkingblues.car.location.setTestLocationEnabled
+import dev.lammertsma.parkingblues.car.location.testModeFlow
 import dev.lammertsma.parkingblues.shared.ParkingSessionRepository
 import dev.lammertsma.parkingblues.shared.model.ParkedSpot
 import dev.lammertsma.parkingblues.shared.model.ZoneFilter
@@ -168,9 +170,8 @@ class MainActivity : ComponentActivity() {
         currentZone.value = getLastZone(this)
         setContent {
             ParkingBluesTheme {
-                var useTestLocation by remember {
-                    mutableStateOf(isTestLocationEnabled(this@MainActivity))
-                }
+                val testMode by testModeFlow.collectAsState()
+                val useTestLocation = testMode == true
                 AppScaffold(
                     spot = parkedSpot.value,
                     repository = repository,
@@ -184,7 +185,6 @@ class MainActivity : ComponentActivity() {
                     onSearchHere = { lat, lon -> searchHere(lat, lon) },
                     onRecenter = { recenter() },
                     onUseTestLocationChanged = { enabled ->
-                        useTestLocation = enabled
                         setTestLocationEnabled(this@MainActivity, enabled)
                         browsing.value = false
                         userLocation.value = null
