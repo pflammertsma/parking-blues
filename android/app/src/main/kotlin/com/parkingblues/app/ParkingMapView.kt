@@ -1,6 +1,8 @@
 package com.parkingblues.app
 
 import android.content.Context
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -9,6 +11,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlin.math.hypot
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -38,14 +44,24 @@ import org.osmdroid.views.overlay.Polygon
  * machinery exists only because the car surface is a VirtualDisplay with
  * no real touch delivery of its own.
  *
- * Frames the camera to the session's search radius once, on the first
- * snapshot, then leaves it alone -- unlike the car screen's continuous
- * follow-the-driver recentering, a phone map the user might be browsing
- * by hand shouldn't fight their own pan/zoom on every ~2s position update.
+ * Frames the camera to each new session's search radius, then either
+ * follows the user's position (MapUiState.following, the default) or, once
+ * the user has dragged the map away, leaves the camera alone so it doesn't
+ * fight their pan/zoom on every ~2s position update.
  */
+class MapUiState {
+    /** Camera tracks the user's position; a deliberate one-finger drag turns it off. */
+    var following by mutableStateOf(true)
+
+    /** Current map center, kept up to date as the map moves. */
+    var center by mutableStateOf<GeoPoint?>(null)
+}
+
 @Composable
 fun ParkingMapView(
     repository: ParkingSessionRepository,
+    userLocation: Pair<Double, Double>?,
+    mapState: MapUiState,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -59,6 +75,44 @@ fun ParkingMapView(
             minZoomLevel = 13.0
             maxZoomLevel = 20.0
             controller.setZoom(16.0)
+
+            addMapListener(object : MapListener {
+                override fun onScroll(event: ScrollEvent?): Boolean {
+                    mapState.center = mapCenter as? GeoPoint
+                    return false
+                }
+
+                override fun onZoom(event: ZoomEvent?): Boolean {
+                    mapState.center = mapCenter as? GeoPoint
+                    return false
+                }
+            })
+
+            // Only a single-finger drag counts as "deliberately moved away":
+            // programmatic follow-animation also fires onScroll, and pinch-
+            // zooming shouldn't drop out of follow mode. Returns false so
+            // osmdroid still handles the gesture itself.
+            val slop = ViewConfiguration.get(context).scaledTouchSlop
+            var downX = 0f
+            var downY = 0f
+            var multiTouch = false
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downX = event.x
+                        downY = event.y
+                        multiTouch = false
+                    }
+                    MotionEvent.ACTION_POINTER_DOWN -> multiTouch = true
+                    MotionEvent.ACTION_MOVE ->
+                        if (!multiTouch && event.pointerCount == 1 &&
+                            hypot(event.x - downX, event.y - downY) > slop
+                        ) {
+                            mapState.following = false
+                        }
+                }
+                false
+            }
         }
     }
 
@@ -82,13 +136,25 @@ fun ParkingMapView(
     val markers = remember { mutableListOf<Marker>() }
     val polygons = remember { mutableListOf<Polygon>() }
 
-    LaunchedEffect(session, bearing) {
+    // Follow mode: keep the camera on the user until they drag the map away.
+    LaunchedEffect(mapState.following, userLocation) {
+        val user = userLocation ?: return@LaunchedEffect
+        if (mapState.following) mapView.controller.animateTo(GeoPoint(user.first, user.second))
+    }
+
+    LaunchedEffect(session, bearing, userLocation) {
         val snapshot = session ?: return@LaunchedEffect
-        renderParkingOverlays(context, mapView, snapshot, bearing ?: 0f, markers, polygons)
+        // The "you" marker comes from the device's own position, not the
+        // session's: when browsing a searched area the session's `you` is
+        // just the search point.
+        val you = userLocation?.let { GeoPoint(it.first, it.second) }
+            ?: GeoPoint(snapshot.you.lat, snapshot.you.lon)
+        renderParkingOverlays(context, mapView, snapshot, you, bearing ?: 0f, markers, polygons)
         if (framedForSessionId != snapshot.sessionId) {
-            val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
+            val searchCenter = GeoPoint(snapshot.origin.lat, snapshot.origin.lon)
             val frame = {
-                mapView.zoomToBoundingBox(MapClustering.boundsForRadius(you, snapshot.radiusM), false)
+                mapView.zoomToBoundingBox(MapClustering.boundsForRadius(searchCenter, snapshot.radiusM), false)
+                mapState.center = mapView.mapCenter as? GeoPoint
                 framedForSessionId = snapshot.sessionId
             }
             // Same layout-timing gotcha as MapSearchScreen: zoomToBoundingBox
@@ -120,6 +186,7 @@ private fun renderParkingOverlays(
     context: Context,
     map: MapView,
     snapshot: SessionSnapshot,
+    you: GeoPoint,
     bearing: Float,
     markers: MutableList<Marker>,
     polygons: MutableList<Polygon>,
@@ -166,7 +233,7 @@ private fun renderParkingOverlays(
     }.also { map.overlays.add(it) }
 
     markers += Marker(map).apply {
-        position = GeoPoint(snapshot.you.lat, snapshot.you.lon)
+        position = you
         title = "You"
         icon = MapIcons.youMarkerIcon(context)
         setAnchor(0.5f, 0.5f)

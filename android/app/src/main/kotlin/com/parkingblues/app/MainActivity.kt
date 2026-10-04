@@ -22,6 +22,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.ElevatedButton
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
+import org.osmdroid.util.GeoPoint
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
@@ -133,6 +142,15 @@ class MainActivity : ComponentActivity() {
     private val parkedSpot = mutableStateOf<ParkedSpot?>(null)
     private val currentZone = mutableStateOf(ZoneFilter.BOTH)
 
+    // The device's own position, tracked separately from the session's `you`:
+    // while browsing a searched area the session is centered elsewhere.
+    private val userLocation = mutableStateOf<Pair<Double, Double>?>(null)
+
+    // True after "Search here": the session is about a spot the user is
+    // planning for, so live position updates must not be sent to it (they'd
+    // move `you` and auto-reject spots as if the user were driving past).
+    private val browsing = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -150,10 +168,15 @@ class MainActivity : ComponentActivity() {
                     useTestLocation = useTestLocation,
                     onGetDirections = { spot -> openDirections(spot) },
                     onFoundCar = { onFoundCar() },
+                    userLocation = userLocation.value,
                     onZoneSelected = { zone -> switchZone(zone) },
+                    onSearchHere = { lat, lon -> searchHere(lat, lon) },
+                    onRecenter = { recenter() },
                     onUseTestLocationChanged = { enabled ->
                         useTestLocation = enabled
                         setTestLocationEnabled(this@MainActivity, enabled)
+                        browsing.value = false
+                        userLocation.value = null
                         // The real-GPS path needs the permission; the
                         // test-location path never queries GPS at all, so it
                         // works before the user has granted (or even been
@@ -194,6 +217,7 @@ class MainActivity : ComponentActivity() {
         clearParkedSpot(this)
         cancelExpiryReminder(this)
         parkedSpot.value = null
+        browsing.value = false
         repository.reset()
         if (isTestLocationEnabled(this) || hasLocationPermission()) startSearch(currentZone.value)
     }
@@ -215,27 +239,45 @@ class MainActivity : ComponentActivity() {
         locationJob?.cancel()
         locationJob = lifecycleScope.launch {
             locationUpdates(this@MainActivity).collect { (lat, lon) ->
-                repository.updatePosition(lat, lon)
+                userLocation.value = lat to lon
+                if (!browsing.value) repository.updatePosition(lat, lon)
             }
         }
     }
 
     /** Switching zones has no "change zone of an existing session" backend
      *  endpoint to call -- it just restarts the search against the new
-     *  zone from the current position, same as the car screen. */
+     *  zone from the current position (or the browsed area), same as the
+     *  car screen. */
     private fun switchZone(zone: ZoneFilter) {
         currentZone.value = zone
         setLastZone(this, zone)
         startSearch(zone)
     }
 
-    private fun startSearch(zone: ZoneFilter) {
+    private fun searchHere(lat: Double, lon: Double) {
+        browsing.value = true
+        startSearch(currentZone.value, lat to lon)
+    }
+
+    /** Leaving a browsed area: back to live results around the user. */
+    private fun recenter() {
+        if (browsing.value) {
+            browsing.value = false
+            startSearch(currentZone.value)
+        }
+    }
+
+    private fun startSearch(zone: ZoneFilter, at: Pair<Double, Double>? = null) {
         if (!isTestLocationEnabled(this) && !hasLocationPermission()) {
             requestLocationPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION)
             return
         }
         lifecycleScope.launch {
-            val existing = repository.session.value?.you?.let { it.lat to it.lon }
+            val browsedOrigin = if (browsing.value) {
+                repository.session.value?.origin?.let { it.lat to it.lon }
+            } else null
+            val existing = at ?: browsedOrigin ?: userLocation.value
             val (lat, lon) = existing ?: lastKnownLocation(this@MainActivity) ?: run {
                 // Last-resort default if lastKnownLocation somehow still
                 // comes back null (e.g. a permission edge case) -- same
@@ -254,9 +296,12 @@ private fun AppScaffold(
     repository: ParkingSessionRepository,
     currentZone: ZoneFilter,
     useTestLocation: Boolean,
+    userLocation: Pair<Double, Double>?,
     onGetDirections: (ParkedSpot) -> Unit,
     onFoundCar: () -> Unit,
     onZoneSelected: (ZoneFilter) -> Unit,
+    onSearchHere: (Double, Double) -> Unit,
+    onRecenter: () -> Unit,
     onUseTestLocationChanged: (Boolean) -> Unit,
 ) {
     Scaffold(
@@ -359,7 +404,10 @@ private fun AppScaffold(
         } else {
             SearchScreenContent(
                 repository = repository,
+                userLocation = userLocation,
                 contentPadding = innerPadding,
+                onSearchHere = onSearchHere,
+                onRecenter = onRecenter,
             )
         }
     }
@@ -368,9 +416,25 @@ private fun AppScaffold(
 @Composable
 private fun SearchScreenContent(
     repository: ParkingSessionRepository,
+    userLocation: Pair<Double, Double>?,
     contentPadding: PaddingValues,
+    onSearchHere: (Double, Double) -> Unit,
+    onRecenter: () -> Unit,
 ) {
     val error by repository.error.collectAsStateWithLifecycle()
+    val session by repository.session.collectAsStateWithLifecycle()
+    val mapState = remember { MapUiState() }
+
+    // Only offer "Search here" once the map is meaningfully away from where
+    // the current results are centered, i.e. after the user has panned.
+    val showSearchHere by remember {
+        derivedStateOf {
+            val center = mapState.center
+            val origin = session?.origin
+            !mapState.following && center != null && origin != null &&
+                center.distanceToAsDouble(GeoPoint(origin.lat, origin.lon)) > SEARCH_HERE_MIN_DISTANCE_M
+        }
+    }
 
     // A Box overlay, not a Column with the map as one of its children:
     // AndroidView-hosted content (ParkingMapView's embedded osmdroid
@@ -387,21 +451,58 @@ private fun SearchScreenContent(
     ) {
         ParkingMapView(
             repository = repository,
+            userLocation = userLocation,
+            mapState = mapState,
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (error != null) {
-            Text(
-                "Error: $error",
-                color = MaterialTheme.colorScheme.onError,
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (error != null) {
+                Text(
+                    "Error: $error",
+                    color = MaterialTheme.colorScheme.onError,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.error)
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                )
+            }
+            if (showSearchHere) {
+                ElevatedButton(
+                    onClick = {
+                        mapState.center?.let { onSearchHere(it.latitude, it.longitude) }
+                    },
+                    modifier = Modifier.padding(top = 12.dp),
+                ) {
+                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Search here")
+                }
+            }
+        }
+
+        if (!mapState.following) {
+            SmallFloatingActionButton(
+                onClick = {
+                    mapState.following = true
+                    onRecenter()
+                },
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.error)
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-            )
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary,
+            ) {
+                Icon(painterResource(R.drawable.ic_my_location), contentDescription = "Recenter")
+            }
         }
     }
 }
+
+private const val SEARCH_HERE_MIN_DISTANCE_M = 75.0
 
 private fun zoneLabel(zone: ZoneFilter): String =
     zone.name.lowercase().replaceFirstChar { it.uppercase() } +

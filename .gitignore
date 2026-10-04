@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.coverage
+htmlcov/
 
 # GCP service account keys -- never commit these.
 *-deployer-key.json
