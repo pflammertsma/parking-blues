@@ -10,6 +10,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
+import dev.lammertsma.parkingblues.car.location.calculateDistanceMeters
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlin.math.hypot
@@ -139,10 +141,41 @@ fun ParkingMapView(
     val markers = remember { mutableListOf<Marker>() }
     val polygons = remember { mutableListOf<Polygon>() }
 
-    // Follow mode: keep the camera on the user until they drag the map away.
-    LaunchedEffect(mapState.following, userLocation) {
-        val user = userLocation ?: return@LaunchedEffect
-        if (mapState.following) mapView.controller.animateTo(GeoPoint(user.first, user.second))
+    // Where the arrow is drawn right now (lat, lon); NaN until the first fix.
+    val shown = remember { doubleArrayOf(Double.NaN, Double.NaN) }
+
+    // Glide the arrow (and, in follow mode, the camera) from where it is to
+    // each new filtered fix over about one fix interval, frame by frame,
+    // instead of hopping once a second.
+    LaunchedEffect(userLocation) {
+        val target = userLocation ?: return@LaunchedEffect
+        var fromLat = if (shown[0].isNaN()) target.first else shown[0]
+        var fromLon = if (shown[1].isNaN()) target.second else shown[1]
+        if (calculateDistanceMeters(fromLat, fromLon, target.first, target.second) > SNAP_DISTANCE_M) {
+            // A big change (test location toggled, long background gap) is a
+            // teleport, not a drive.
+            fromLat = target.first
+            fromLon = target.second
+        }
+        val startNanos = withFrameNanos { it }
+        while (true) {
+            val nanos = withFrameNanos { it }
+            val t = ((nanos - startNanos) / 1_000_000f / SLIDE_MS).coerceAtMost(1f)
+            val lat = fromLat + (target.first - fromLat) * t
+            val lon = fromLon + (target.second - fromLon) * t
+            shown[0] = lat
+            shown[1] = lon
+            youMarker[0]?.position = GeoPoint(lat, lon)
+            if (mapState.following) mapView.controller.setCenter(GeoPoint(lat, lon))
+            mapView.invalidate()
+            if (t >= 1f) break
+        }
+    }
+
+    // Recenter pressed (or following resumed): ease the camera back to the user.
+    LaunchedEffect(mapState.following) {
+        if (!mapState.following || shown[0].isNaN()) return@LaunchedEffect
+        mapView.controller.animateTo(GeoPoint(shown[0], shown[1]))
     }
 
     // Turning the arrow must not rebuild every overlay (the compass fires many
@@ -152,13 +185,16 @@ fun ParkingMapView(
         mapView.invalidate()
     }
 
-    LaunchedEffect(session, userLocation) {
+    LaunchedEffect(session) {
         val snapshot = session ?: return@LaunchedEffect
         // The "you" marker comes from the device's own position, not the
         // session's: when browsing a searched area the session's `you` is
         // just the search point.
-        val you = userLocation?.let { GeoPoint(it.first, it.second) }
-            ?: GeoPoint(snapshot.you.lat, snapshot.you.lon)
+        val you = when {
+            !shown[0].isNaN() -> GeoPoint(shown[0], shown[1])
+            userLocation != null -> GeoPoint(userLocation.first, userLocation.second)
+            else -> GeoPoint(snapshot.you.lat, snapshot.you.lon)
+        }
         youMarker[0] = renderParkingOverlays(context, mapView, snapshot, you, currentHeading ?: 0f, markers, polygons)
         if (framedForSessionId != snapshot.sessionId) {
             val searchCenter = GeoPoint(snapshot.origin.lat, snapshot.origin.lon)
@@ -257,3 +293,6 @@ private fun renderParkingOverlays(
     map.invalidate()
     return youMarker
 }
+
+private const val SLIDE_MS = 1000f
+private const val SNAP_DISTANCE_M = 300.0

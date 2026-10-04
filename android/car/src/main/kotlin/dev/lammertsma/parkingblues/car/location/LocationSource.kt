@@ -3,9 +3,7 @@ package dev.lammertsma.parkingblues.car.location
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
-import android.location.LocationListener
 import android.location.LocationManager
-import android.os.Bundle
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -27,6 +25,8 @@ data class GpsFix(
   val bearingDegrees: Float?,
   val speedMps: Float? = null,
   val bearingAccuracyDegrees: Float? = null,
+  /** Horizontal accuracy radius in meters (68% confidence), when the provider reports one. */
+  val accuracyM: Float? = null,
 )
 
 private fun Location.toFix() = GpsFix(
@@ -35,7 +35,11 @@ private fun Location.toFix() = GpsFix(
   bearingDegrees = if (hasBearing()) bearing else null,
   speedMps = if (hasSpeed()) speed else null,
   bearingAccuracyDegrees = if (hasBearingAccuracy()) bearingAccuracyDegrees else null,
+  accuracyM = if (hasAccuracy()) accuracy else null,
 )
+
+private const val INITIAL_FIX_MAX_AGE_MS = 30_000L
+private const val INITIAL_FIX_MAX_ACCURACY_M = 100f
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @SuppressLint("MissingPermission")
@@ -55,24 +59,10 @@ fun locationUpdates(context: Context): Flow<GpsFix> {
         }
       } else {
         callbackFlow {
-          val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-          val lmListener = object : LocationListener {
-            override fun onLocationChanged(loc: Location) {
-              trySend(loc.toFix())
-            }
-            @Deprecated("Deprecated in Java")
-            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-          }
-
-          if (lm != null) {
-            if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-              lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, lmListener, context.mainLooper)
-            }
-            if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-              lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000L, 0f, lmListener, context.mainLooper)
-            }
-          }
-
+          // Fused provider only. Subscribing to the raw GPS *and* network
+          // providers as well and merging everything into one stream let
+          // coarse network fixes (often 30-100+ m off) interleave with good
+          // GPS fixes, so the position hopped back and forth.
           val client = LocationServices.getFusedLocationProviderClient(context)
           val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000L)
             .setMinUpdateIntervalMillis(500L)
@@ -80,25 +70,26 @@ fun locationUpdates(context: Context): Flow<GpsFix> {
             .build()
           val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
-              result.lastLocation?.let {
-                trySend(it.toFix())
-              }
+              result.lastLocation?.let { trySend(it.toFix()) }
             }
           }
           client.requestLocationUpdates(request, callback, context.mainLooper)
 
+          // A recent, reasonably accurate last-known fix gets the first draw
+          // on screen before the first fused result arrives.
+          val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
           val initial = listOfNotNull(
             lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER),
             lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER),
             lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER),
-          ).maxByOrNull { it.time }
-          initial?.let {
-            trySend(it.toFix())
-          }
+          ).filter {
+            System.currentTimeMillis() - it.time < INITIAL_FIX_MAX_AGE_MS &&
+              (!it.hasAccuracy() || it.accuracy <= INITIAL_FIX_MAX_ACCURACY_M)
+          }.maxByOrNull { it.time }
+          initial?.let { trySend(it.toFix()) }
 
           awaitClose {
             client.removeLocationUpdates(callback)
-            lm?.removeUpdates(lmListener)
           }
         }
       }

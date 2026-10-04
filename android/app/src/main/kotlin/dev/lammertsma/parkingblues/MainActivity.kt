@@ -63,6 +63,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import dev.lammertsma.parkingblues.car.location.HeadingTracker
+import dev.lammertsma.parkingblues.car.location.PositionFilter
 import dev.lammertsma.parkingblues.car.location.compassHeadings
 import dev.lammertsma.parkingblues.car.car.EXTRA_SHOW_PARKED
 import dev.lammertsma.parkingblues.car.car.cancelExpiryReminder
@@ -157,6 +158,7 @@ class MainActivity : ComponentActivity() {
 
     // Phone UI: GPS course while moving, the compass while standing still.
     private val headingTracker = HeadingTracker(useCompass = true)
+    private val positionFilter = PositionFilter()
     private val heading = mutableStateOf<Float?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -256,7 +258,7 @@ class MainActivity : ComponentActivity() {
         locationJob?.cancel()
         locationJob = lifecycleScope.launch {
             locationUpdates(this@MainActivity).collect { fix ->
-                val (lat, lon) = fix.lat to fix.lon
+                val (lat, lon) = positionFilter.onFix(fix)
                 userLocation.value = lat to lon
                 heading.value = headingTracker.onFix(fix)
                 if (!browsing.value) repository.updatePosition(lat, lon)

@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import dev.lammertsma.parkingblues.car.HasParkingRepository
 import dev.lammertsma.parkingblues.car.location.HeadingTracker
+import dev.lammertsma.parkingblues.car.location.PositionFilter
 import dev.lammertsma.parkingblues.car.location.locationUpdates
 import kotlinx.coroutines.launch
 
@@ -44,6 +45,7 @@ class ParkingCarSession : Session() {
     // In the car the phone's compass is meaningless (it sits in a cradle or
     // cupholder), so heading is GPS course only and holds while stopped.
     private val headingTracker = HeadingTracker(useCompass = false)
+    private val positionFilter = PositionFilter()
 
     private fun startLocationUpdates() {
         // Feed real GPS into the repository for as long as the car session
@@ -52,7 +54,8 @@ class ParkingCarSession : Session() {
         // continuous stream, not a one-shot fix).
         lifecycleScope.launch {
             locationUpdates(carContext).collect { fix ->
-                repository.updatePosition(fix.lat, fix.lon, headingTracker.onFix(fix))
+                val (lat, lon) = positionFilter.onFix(fix)
+                repository.updatePosition(lat, lon, headingTracker.onFix(fix))
             }
         }
     }
