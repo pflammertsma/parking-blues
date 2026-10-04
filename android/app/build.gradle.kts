@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    id("parkingblues.release-signing")
     alias(libs.plugins.kotlin.compose)
 }
 
@@ -20,7 +21,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 
@@ -33,10 +39,20 @@ android {
         compose = true
         buildConfig = true
     }
+}
 
-    kotlinOptions {
-        jvmTarget = JvmTarget.JVM_11.target
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_11)
     }
+}
+
+// The phone app is pure Compose and uses no fragments. The only thing pulling
+// androidx.fragment in here is play-services-location (via play-services-base,
+// an ancient 1.1.0), used only for FusedLocationProviderClient, so exclude it.
+// NOT done in :automotive: its CarAppActivity extends FragmentActivity.
+configurations.configureEach {
+    exclude(group = "androidx.fragment", module = "fragment")
 }
 
 dependencies {

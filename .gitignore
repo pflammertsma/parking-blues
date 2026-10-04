@@ -19,3 +19,10 @@ android/**/*.iml
 android/**/.cxx/
 android/captures/
 android/.kotlin/
+
+# Android release signing: keystore and its passwords. Never commit; back up
+# android/keystore/ somewhere private (e.g. Google Drive).
+android/keystore/
+*.jks
+*.keystore
+keystore.properties

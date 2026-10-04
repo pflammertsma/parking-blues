@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
+import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -15,16 +16,20 @@ kotlin {
         }
     }
 
-    // iOS targets aren't consumed by an app yet (that's a later milestone --
-    // see README section 5.2), but declaring them now keeps the shared
-    // module's commonMain honest about what's actually platform-agnostic.
-    listOf(
-        iosX64(),
-        iosArm64(),
-        iosSimulatorArm64(),
-    ).forEach { target ->
-        target.binaries.framework {
-            baseName = "shared"
+    // iOS targets are only declared on macOS: they can't be built elsewhere,
+    // and declaring them on Windows/Linux makes every IDE sync run the slow
+    // Kotlin/Native commonizer for nothing. Not consumed by an app yet (see
+    // README section 5.2); CI on a Mac is what will check iosMain compiles.
+    val isMac = OperatingSystem.current().isMacOsX
+    if (isMac) {
+        listOf(
+            iosX64(),
+            iosArm64(),
+            iosSimulatorArm64(),
+        ).forEach { target ->
+            target.binaries.framework {
+                baseName = "shared"
+            }
         }
     }
 
@@ -40,8 +45,10 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
         }
-        iosMain.dependencies {
-            implementation(libs.ktor.client.darwin)
+        if (isMac) {
+            iosMain.dependencies {
+                implementation(libs.ktor.client.darwin)
+            }
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
