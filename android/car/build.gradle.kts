@@ -35,6 +35,13 @@ dependencies {
     api(libs.play.services.location)
     api(libs.osmdroid.android)
     api(libs.kotlinx.coroutines.core)
+    api(libs.kotlinx.serialization.json)
+    api(libs.androidx.core.ktx)
+    // For the parking-expiry reminder (ParkingReminderScheduler/Worker) --
+    // survives process death and Doze without needing the exact-alarm
+    // permission, which is appropriate for a "remind me a few minutes
+    // before" use case rather than a time-critical alarm.
+    api(libs.androidx.work.runtime.ktx)
 
     testImplementation(kotlin("test"))
 }

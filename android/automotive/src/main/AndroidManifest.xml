@@ -13,6 +13,15 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Declared for consistency with :app's ParkingReminderScheduler (shared
+         :car code); "Parked here" still posts a local notification on this
+         device's own shade even here, though its tap target has nothing to
+         open on Automotive OS (no MainActivity in this APK at all; see
+         ParkingReminderScheduler's doc on why). Not requested at runtime
+         anywhere in this module; if never granted, notifications here just
+         don't show, which is an acceptable degradation. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Required by PlaceListMapTemplate (SearchScreen). We're a POI app,
          not a navigation app, so this is the map-templates permission, not
          androidx.car.app.NAVIGATION_TEMPLATES; the two are mutually

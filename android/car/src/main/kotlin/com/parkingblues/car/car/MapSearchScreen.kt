@@ -1,18 +1,9 @@
 package com.parkingblues.car.car
 
 import android.app.Presentation
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.Rect
-import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.Drawable
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
-import androidx.annotation.ColorInt
-import androidx.annotation.DrawableRes
-import androidx.core.content.ContextCompat
 import androidx.annotation.OptIn
 import androidx.car.app.AppManager
 import androidx.car.app.CarContext
@@ -32,35 +23,39 @@ import androidx.car.app.model.Template
 import androidx.car.app.navigation.model.MapController
 import androidx.car.app.navigation.model.MapWithContentTemplate
 import androidx.lifecycle.lifecycleScope
-import com.parkingblues.car.R
-import com.parkingblues.car.location.locationUpdates
+import com.parkingblues.car.location.getLastZone
+import com.parkingblues.car.location.getSimulatedRouteInitialBearing
+import com.parkingblues.car.location.isTestLocationEnabled
+import com.parkingblues.car.location.lastKnownLocation
+import com.parkingblues.car.location.setLastZone
+import com.parkingblues.car.location.setTestLocationEnabled
 import com.parkingblues.shared.ParkingSessionRepository
+import com.parkingblues.shared.model.ParkedSpot
 import com.parkingblues.shared.model.ParkingSegment
 import com.parkingblues.shared.model.SessionSnapshot
 import com.parkingblues.shared.model.SessionState
 import com.parkingblues.shared.model.ZoneFilter
 import com.parkingblues.shared.model.ZoneType
 import kotlinx.coroutines.launch
-import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
-import kotlin.math.asin
-import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.ln
-import kotlin.math.pow
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
- * Prototype: a self-drawn map (osmdroid, via AppManager's SurfaceCallback +
- * a VirtualDisplay/Presentation hosting a MapView) instead of
- * PlaceListMapTemplate's host-rendered one. See android/README.md for why
- * this is a separate module concern (ACCESS_SURFACE permission,
- * MapWithContentTemplate living in androidx.car.app.navigation.model despite
- * being POI-app-eligible).
+ * The car app's one screen: osmdroid map (via AppManager's SurfaceCallback +
+ * a VirtualDisplay/Presentation hosting a MapView) with a small content pane
+ * on top -- a live summary plus zone-switching rows, no separate zone-pick
+ * screen and no "Find parking" button. Auto-starts a search on whatever
+ * zone was last selected (getLastZone, defaulting to BOTH) as soon as this
+ * screen is created, so opening the car app goes straight to a live map;
+ * switching zones here just restarts the search against the new zone
+ * (there's no "change zone of an existing session" endpoint -- see
+ * backend/session.py) rather than navigating to a different screen.
+ *
+ * See android/README.md for why this is a separate module concern
+ * (ACCESS_SURFACE permission, MapWithContentTemplate living in
+ * androidx.car.app.navigation.model despite being POI-app-eligible).
  *
  * osmdroid, not Google's Maps SDK for Android: the latter renders through
  * Play Services' "Dynamite" module loader (maps_dynamite), and confirmed via
@@ -77,7 +72,9 @@ import kotlin.math.sqrt
  * The payoff over the host map: we can draw things PlaceListMapTemplate's
  * Place/PlaceMarker model can't -- a distinct "you" marker, the destination
  * pin, and dimmed rejected spots, matching web/app.js's map exactly (see
- * SessionSnapshot.you / .origin / .rejected).
+ * SessionSnapshot.you / .origin / .rejected). Clustering/box/icon math is
+ * shared with the phone's own map view (ParkingMapView, in :app) via
+ * MapClustering/MapIcons, not duplicated here.
  *
  * No special "current target" treatment (no highlighted marker, no rank
  * numbers, no arrow prefix) -- the driver looks at the map and picks
@@ -97,7 +94,20 @@ class MapSearchScreen(
     private var virtualDisplay: VirtualDisplay? = null
     private var presentation: Presentation? = null
     private var mapView: MapView? = null
-    private var hasFramedInitialCamera = false
+
+    // Keyed on sessionId, not a one-shot boolean: switching zones (the
+    // Pane rows in summaryContentTemplate) starts a brand new session via
+    // startSearch(), which can jump "you" to wherever that new search
+    // actually started from. A one-shot flag would leave the camera stuck
+    // on the *first* session's location forever after that -- see the
+    // identical fix in :app's ParkingMapView, found live there first.
+    private var framedForSessionId: String? = null
+
+    // The zone this screen is currently searching, independent of whatever
+    // segment the backend happens to be tracking as `current` -- shown as
+    // the checked row in the content pane (see summaryContentTemplate) and
+    // persisted via setLastZone so the next launch defaults to it.
+    private var currentZone: ZoneFilter = retryZone ?: getLastZone(carContext)
 
     // Set in onVisibleAreaChanged: the host's own rect for what part of the
     // surface isn't covered by the content pane/status bar. osmdroid has no
@@ -123,39 +133,78 @@ class MapSearchScreen(
     // subscription rather than plumbed through ParkingSessionRepository.
     // Null when unavailable (device stationary, or the fixed test-location
     // point, which has no meaningful heading) -- shown as a plain dot then.
-  private var lastBearing: Float? = null
-  private var lastSummaryTitle: String? = null
-  private var lastState: SessionState? = null
+    private var lastBearing: Float? = null
+    private var lastSummaryTitle: String? = null
+    private var lastState: SessionState? = null
 
-  init {
-    carContext.getCarService(AppManager::class.java).setSurfaceCallback(this)
-    lifecycleScope.launch {
-      repository.session.collect { snapshot ->
-        if (snapshot != null) {
-          val title = computeSummaryTitle(snapshot)
-          if (title != lastSummaryTitle || snapshot.state != lastState) {
-            lastSummaryTitle = title
-            lastState = snapshot.state
-            invalidate()
-          }
-          renderMarkers(snapshot)
-        } else {
-          invalidate()
+    init {
+        carContext.getCarService(AppManager::class.java).setSurfaceCallback(this)
+
+        // No separate zone-pick screen and no "Find parking" button
+        // anymore -- go straight to a live map on whatever zone was last
+        // used. Only fires if there's no session already in flight (e.g.
+        // a config change recreating this Screen shouldn't restart search).
+        if (repository.session.value == null) {
+            startSearch(currentZone)
         }
-      }
-    }
-    lifecycleScope.launch {
-      repository.error.collect { invalidate() }
-    }
-    lifecycleScope.launch {
-      repository.bearing.collect { bearing ->
-        if (bearing != null) {
-          lastBearing = bearing
-          repository.session.value?.let { renderMarkers(it) }
+
+        lifecycleScope.launch {
+            repository.session.collect { snapshot ->
+                if (snapshot != null) {
+                    val title = computeSummaryTitle(snapshot)
+                    if (title != lastSummaryTitle || snapshot.state != lastState) {
+                        lastSummaryTitle = title
+                        lastState = snapshot.state
+                        invalidate()
+                    }
+                    renderMarkers(snapshot)
+                } else {
+                    invalidate()
+                }
+            }
         }
-      }
+        lifecycleScope.launch {
+            repository.error.collect { invalidate() }
+        }
+        lifecycleScope.launch {
+            repository.bearing.collect { bearing ->
+                if (bearing != null) {
+                    lastBearing = bearing
+                    repository.session.value?.let { renderMarkers(it) }
+                }
+            }
+        }
     }
-  }
+
+    /** Starts (or restarts) the search against [zone], using the driver's
+     *  current position if a session is already live, otherwise falling
+     *  back through the explicit retry coordinates / last known fix / the
+     *  Zurich default -- same fallback chain ZoneSelectScreen used to use. */
+    private fun startSearch(zone: ZoneFilter) {
+        currentZone = zone
+        setLastZone(carContext, zone)
+        lifecycleScope.launch {
+            val you = repository.session.value?.you
+            val (lat, lon) = when {
+                you != null -> you.lat to you.lon
+                retryLat != null && retryLon != null -> retryLat to retryLon
+                else -> lastKnownLocation(carContext) ?: (47.379198 to 8.531307)
+            }
+            val isTest = isTestLocationEnabled(carContext)
+            val bearing = if (isTest) getSimulatedRouteInitialBearing() else null
+            repository.startSearch(lat, lon, zone, bearing = bearing)
+        }
+    }
+
+    /** The "Simulate test drive" entry ZoneSelectScreen used to offer,
+     *  preserved here as an action instead of a separate screen: enables
+     *  the fixed test-driving-loop location source and searches BOTH
+     *  zones, so the clustering/auto-rejection behavior stays reachable
+     *  without a real device. */
+    private fun startTestDrive() {
+        setTestLocationEnabled(carContext, true)
+        startSearch(ZoneFilter.BOTH)
+    }
 
     // -- SurfaceCallback: draw our own map onto the host-provided Surface --
 
@@ -184,7 +233,7 @@ class MapSearchScreen(
         virtualDisplay = display
 
         val newPresentation = Presentation(carContext, display.display)
-        val initialCenter = this@MapSearchScreen.repository.session.value?.you
+        val initialCenter = repository.session.value?.you
         val centerLat = retryLat ?: initialCenter?.lat ?: 47.379198
         val centerLon = retryLon ?: initialCenter?.lon ?: 8.531307
         val newMapView = MapView(newPresentation.context).apply {
@@ -261,7 +310,7 @@ class MapSearchScreen(
         // after the zoom change and scrolling that back out -- the same
         // screen<->geo round-trip technique as recenterTarget above.
         val before = map.projection.fromPixels(focusX.toInt(), focusY.toInt())
-        val newZoom = map.zoomLevelDouble + ln(scaleFactor.toDouble()) / ln(2.0)
+        val newZoom = map.zoomLevelDouble + kotlin.math.ln(scaleFactor.toDouble()) / kotlin.math.ln(2.0)
         map.controller.setZoom(newZoom)
         val afterPx = map.projection.toPixels(GeoPoint(before.latitude, before.longitude), null)
         map.controller.scrollBy(afterPx.x - focusX.toInt(), afterPx.y - focusY.toInt())
@@ -291,406 +340,101 @@ class MapSearchScreen(
         map.overlays.removeAll(polygons)
         polygons.clear()
 
-
-    // Visited/checked spots grouped into greyed-out zone outlines.
-    // Parking icons are removed for visited zones; icons only show for unvisited zones.
-    clusterByZone(snapshot.rejected).forEach { cluster ->
-      polygons += Polygon(map).apply {
-        points = orientedBoxCorners(cluster.segments)
-        fillColor = COLOR_REJECTED_ZONE_FILL
-        strokeColor = COLOR_REJECTED_ZONE_STROKE
-        strokeWidth = 2.5f
-      }.also { map.overlays.add(it) }
-    }
-
-    // Every active candidate, not a capped "nearest N" -- tried
-    // capping this (see git history) when a dense result set first
-    // looked like an overwhelming pile of overlapping pins, but that
-    // was actually the oversized-marker bug (fixed separately), not a
-    // real problem with showing the full set; capping was never asked
-    // for and just hid real data. Nearby same-zone spots are grouped
-    // into one box+icon instead of one pin per spot (see clusterByZone).
-    val activeClusters = clusterByZone(activeCandidates(snapshot))
-    activeClusters.forEach { cluster ->
-      polygons += Polygon(map).apply {
-        points = orientedBoxCorners(cluster.segments)
-        fillColor = zoneFillColor(cluster.zoneType)
-        strokeColor = ZONE_ACCENT
-        strokeWidth = 3f
-      }.also { map.overlays.add(it) }
-    }
-
-    activeClusters.forEach { cluster ->
-      markers += Marker(map).apply {
-        position = centroidLatLng(cluster.segments)
-        title = clusterTitle(cluster)
-        icon = zoneIcon(cluster.zoneType)
-        setAnchor(0.5f, 0.5f)
-        setInfoWindow(null)
-      }.also { map.overlays.add(it) }
-    }
-
-    // Destination marker drawn above parking zones so it is never obscured
-    markers += Marker(map).apply {
-      position = GeoPoint(snapshot.origin.lat, snapshot.origin.lon)
-      title = "Destination"
-      icon = destinationMarkerIcon
-      setAnchor(DESTINATION_ANCHOR_X, DESTINATION_ANCHOR_Y) // the pin's tip, not its bounding-box center
-      setInfoWindow(null)
-    }.also { map.overlays.add(it) }
-
-    // "You" marker drawn LAST so it is always on top of all other markers and zones
-    val currentBearing = repository.bearing.value ?: lastBearing ?: 0f
-    markers += Marker(map).apply {
-      position = GeoPoint(snapshot.you.lat, snapshot.you.lon)
-      title = "You"
-      icon = youMarkerIcon
-      setAnchor(0.5f, 0.5f)
-      rotation = -currentBearing // osmdroid Marker.draw applies -mBearing to canvas rotate
-      setFlat(true) // stays map-relative, not screen-relative
-      setInfoWindow(null)
-    }.also { map.overlays.add(it) }
-
-    if (isFollowingUser) {
-      val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
-      if (!hasFramedInitialCamera) {
-        val frameCamera = {
-          if (map.width > 0 && map.height > 0) {
-            hasFramedInitialCamera = true
-            map.zoomToBoundingBox(boundsForRadius(you, snapshot.radiusM), false)
-            map.controller.setCenter(recenterTarget(you))
-          }
+        // Visited/checked spots grouped into greyed-out zone outlines.
+        MapClustering.clusterByZone(snapshot.rejected).forEach { cluster ->
+            polygons += Polygon(map).apply {
+                points = MapClustering.orientedBoxCorners(cluster.segments)
+                fillColor = MapIcons.COLOR_REJECTED_ZONE_FILL
+                strokeColor = MapIcons.COLOR_REJECTED_ZONE_STROKE
+                strokeWidth = 2.5f
+            }.also { map.overlays.add(it) }
         }
-        if (map.width > 0 && map.height > 0) {
-          map.post { frameCamera() }
-        } else {
-          map.addOnLayoutChangeListener(object : android.view.View.OnLayoutChangeListener {
-            override fun onLayoutChange(
-              v: android.view.View?,
-              left: Int, top: Int, right: Int, bottom: Int,
-              oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int,
-            ) {
-              if ((right - left) > 0 && (bottom - top) > 0) {
-                map.removeOnLayoutChangeListener(this)
-                map.post { frameCamera() }
-              }
+
+        // Every active candidate, not a capped "nearest N" -- tried
+        // capping this (see git history) when a dense result set first
+        // looked like an overwhelming pile of overlapping pins, but that
+        // was actually the oversized-marker bug (fixed separately), not a
+        // real problem with showing the full set; capping was never asked
+        // for and just hid real data. Nearby same-zone spots are grouped
+        // into one box+icon instead of one pin per spot.
+        val activeClusters = MapClustering.clusterByZone(MapClustering.activeCandidates(snapshot))
+        activeClusters.forEach { cluster ->
+            polygons += Polygon(map).apply {
+                points = MapClustering.orientedBoxCorners(cluster.segments)
+                fillColor = MapIcons.zoneFillColor(cluster.zoneType)
+                strokeColor = MapIcons.ZONE_ACCENT
+                strokeWidth = 3f
+            }.also { map.overlays.add(it) }
+        }
+
+        activeClusters.forEach { cluster ->
+            markers += Marker(map).apply {
+                position = MapClustering.centroidLatLng(cluster.segments)
+                title = MapClustering.clusterTitle(cluster)
+                icon = MapIcons.zoneIcon(carContext, cluster.zoneType)
+                setAnchor(0.5f, 0.5f)
+                setInfoWindow(null)
+            }.also { map.overlays.add(it) }
+        }
+
+        // Destination marker drawn above parking zones so it is never obscured
+        markers += Marker(map).apply {
+            position = GeoPoint(snapshot.origin.lat, snapshot.origin.lon)
+            title = "Destination"
+            icon = destinationMarkerIcon
+            setAnchor(MapIcons.DESTINATION_ANCHOR_X, MapIcons.DESTINATION_ANCHOR_Y)
+            setInfoWindow(null)
+        }.also { map.overlays.add(it) }
+
+        // "You" marker drawn LAST so it is always on top of all other markers and zones
+        val currentBearing = repository.bearing.value ?: lastBearing ?: 0f
+        markers += Marker(map).apply {
+            position = GeoPoint(snapshot.you.lat, snapshot.you.lon)
+            title = "You"
+            icon = youMarkerIcon
+            setAnchor(0.5f, 0.5f)
+            rotation = -currentBearing // osmdroid Marker.draw applies -mBearing to canvas rotate
+            setFlat(true) // stays map-relative, not screen-relative
+            setInfoWindow(null)
+        }.also { map.overlays.add(it) }
+
+        if (isFollowingUser) {
+            val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
+            if (framedForSessionId != snapshot.sessionId) {
+                val frameCamera = {
+                    if (map.width > 0 && map.height > 0) {
+                        framedForSessionId = snapshot.sessionId
+                        map.zoomToBoundingBox(MapClustering.boundsForRadius(you, snapshot.radiusM), false)
+                        map.controller.setCenter(recenterTarget(you))
+                    }
+                }
+                if (map.width > 0 && map.height > 0) {
+                    map.post { frameCamera() }
+                } else {
+                    map.addOnLayoutChangeListener(object : android.view.View.OnLayoutChangeListener {
+                        override fun onLayoutChange(
+                            v: android.view.View?,
+                            left: Int, top: Int, right: Int, bottom: Int,
+                            oldLeft: Int, oldTop: Int, oldRight: Int, oldBottom: Int,
+                        ) {
+                            if ((right - left) > 0 && (bottom - top) > 0) {
+                                map.removeOnLayoutChangeListener(this)
+                                map.post { frameCamera() }
+                            }
+                        }
+                    })
+                }
+            } else {
+                map.controller.animateTo(recenterTarget(you))
             }
-          })
         }
-      } else {
-        map.controller.animateTo(recenterTarget(you))
-      }
-    }
         map.invalidate()
     }
 
-    private fun boundsForRadius(center: GeoPoint, radiusM: Double): BoundingBox {
-        val latDeltaDeg = radiusM / METERS_PER_DEGREE_LAT
-        val lonDeltaDeg = radiusM / (METERS_PER_DEGREE_LAT * cos(Math.toRadians(center.latitude)).coerceAtLeast(0.01))
-        return BoundingBox(
-            center.latitude + latDeltaDeg, // north
-            center.longitude + lonDeltaDeg, // east
-            center.latitude - latDeltaDeg, // south
-            center.longitude - lonDeltaDeg, // west
-        )
-    }
+    private val youMarkerIcon by lazy { MapIcons.youMarkerIcon(carContext) }
+    private val destinationMarkerIcon by lazy { MapIcons.destinationMarkerIcon(carContext) }
 
-  private fun activeCandidates(snapshot: SessionSnapshot): List<ParkingSegment> {
-    val rejectedIds = snapshot.rejected.map { it.id }.toSet()
-    return (listOfNotNull(snapshot.current) + snapshot.upcoming).filter { it.id !in rejectedIds }
-  }
-
-    // -- Clustering: nearby same-zone spots become one box+icon instead of
-    //    one pin per spot (per direct feedback that individual circles,
-    //    even at a sane size and count, don't read well at a glance -- the
-    //    actual real-Zurich-street-block shape reads better as one
-    //    grouped box than as N separate dots along a curb). --
-
-    private data class SpotCluster(val zoneType: ZoneType, val segments: List<ParkingSegment>)
-
-    private fun clusterByZone(candidates: List<ParkingSegment>): List<SpotCluster> =
-        candidates.groupBy { it.zoneType }.flatMap { (zone, segments) ->
-            clusterByProximity(segments).map { SpotCluster(zone, it) }
-        }
-
-    /**
-     * Single-linkage grouping (union-find) of segments within
-     * CLUSTER_EPS_M of each other -- chains of nearby segments merge
-     * transitively, mirroring how backend/clustering.py groups segments
-     * server-side, just applied here purely for how spots are drawn, not
-     * for ranking/selection (that stays entirely server-side, see
-     * android/README.md's §5.2 architecture note).
-     */
-    private fun clusterByProximity(segments: List<ParkingSegment>): List<List<ParkingSegment>> {
-        if (segments.size <= 1) return listOf(segments)
-        val parent = IntArray(segments.size) { it }
-        fun find(x: Int): Int {
-            var root = x
-            while (parent[root] != root) root = parent[root]
-            var cur = x
-            while (parent[cur] != root) {
-                val next = parent[cur]
-                parent[cur] = root
-                cur = next
-            }
-            return root
-        }
-        for (i in segments.indices) {
-            for (j in i + 1 until segments.size) {
-                if (haversineMeters(segments[i], segments[j]) <= CLUSTER_EPS_M) {
-                    val ri = find(i)
-                    val rj = find(j)
-                    if (ri != rj) parent[ri] = rj
-                }
-            }
-        }
-        return segments.indices.groupBy(::find).values.map { idxs -> idxs.map { segments[it] } }
-    }
-
-    private fun haversineMeters(a: ParkingSegment, b: ParkingSegment): Double {
-        val earthRadiusM = 6_371_000.0
-        val lat1 = Math.toRadians(a.lat)
-        val lat2 = Math.toRadians(b.lat)
-        val dLat = Math.toRadians(b.lat - a.lat)
-        val dLon = Math.toRadians(b.lon - a.lon)
-        val h = sin(dLat / 2).pow(2) + cos(lat1) * cos(lat2) * sin(dLon / 2).pow(2)
-        return 2 * earthRadiusM * asin(sqrt(h))
-    }
-
-    private fun centroidLatLng(segments: List<ParkingSegment>): GeoPoint =
-        GeoPoint(segments.map { it.lat }.average(), segments.map { it.lon }.average())
-
-    private fun clusterTitle(cluster: SpotCluster): String {
-        val zoneLabel = if (cluster.zoneType == ZoneType.BLUE) "Blue zone" else "White zone"
-        val count = cluster.segments.size
-        return "$zoneLabel · $count spot${if (count == 1) "" else "s"}"
-    }
-
-    /**
-     * A rectangle aligned with the cluster's own spread direction (the two
-     * most-distant segments in it), not a plain north-aligned box --
-     * parking segments run along streets, which are rarely north-south/
-     * east-west, so a plain axis-aligned box would either clip a diagonal
-     * row of spots or be far larger than the actual curb it represents.
-     * Projected onto the map this renders as a parallelogram whenever the
-     * street itself isn't axis-aligned, which is most of the time.
-     *
-     * Uses a flat local-meters approximation around the cluster's own
-     * centroid; fine at the scale these clusters actually span (tens of
-     * meters), not meant for anything larger.
-     */
-    private fun orientedBoxCorners(segments: List<ParkingSegment>): List<GeoPoint> {
-        val center = centroidLatLng(segments)
-        val metersPerDegLon = METERS_PER_DEGREE_LAT * cos(Math.toRadians(center.latitude)).coerceAtLeast(0.01)
-
-        fun toLocal(segment: ParkingSegment): Pair<Double, Double> =
-            (segment.lon - center.longitude) * metersPerDegLon to (segment.lat - center.latitude) * METERS_PER_DEGREE_LAT
-
-        val points = segments.map(::toLocal)
-
-        var axisX = 0.0
-        var axisY = 1.0
-        if (points.size > 1) {
-            var maxDist = -1.0
-            for (i in points.indices) {
-                for (j in i + 1 until points.size) {
-                    val dx = points[j].first - points[i].first
-                    val dy = points[j].second - points[i].second
-                    val dist = hypot(dx, dy)
-                    if (dist > maxDist) {
-                        maxDist = dist
-                        if (dist > 0) {
-                            axisX = dx / dist
-                            axisY = dy / dist
-                        }
-                    }
-                }
-            }
-        }
-        val perpX = -axisY
-        val perpY = axisX
-
-        var minAlong = 0.0
-        var maxAlong = 0.0
-        var minAcross = 0.0
-        var maxAcross = 0.0
-        points.forEachIndexed { i, (x, y) ->
-            val along = x * axisX + y * axisY
-            val across = x * perpX + y * perpY
-            if (i == 0) {
-                minAlong = along; maxAlong = along
-                minAcross = across; maxAcross = across
-            } else {
-                minAlong = minOf(minAlong, along); maxAlong = maxOf(maxAlong, along)
-                minAcross = minOf(minAcross, across); maxAcross = maxOf(maxAcross, across)
-            }
-        }
-        minAlong -= BOX_PAD_ALONG_M; maxAlong += BOX_PAD_ALONG_M
-        minAcross -= BOX_PAD_ACROSS_M; maxAcross += BOX_PAD_ACROSS_M
-
-        fun corner(along: Double, across: Double): GeoPoint {
-            val localX = axisX * along + perpX * across
-            val localY = axisY * along + perpY * across
-            return GeoPoint(
-                center.latitude + localY / METERS_PER_DEGREE_LAT,
-                center.longitude + localX / metersPerDegLon,
-            )
-        }
-        return listOf(
-            corner(minAlong, minAcross),
-            corner(maxAlong, minAcross),
-            corner(maxAlong, maxAcross),
-            corner(minAlong, maxAcross),
-        )
-    }
-
-    // osmdroid markers take a plain Drawable -- no BitmapDescriptorFactory-
-    // style rasterization step needed (unlike the Google Maps SDK version
-    // of this file, which had to manually render vector drawables to a
-    // Bitmap first since BitmapDescriptorFactory.fromResource() silently
-    // doesn't actually do that). Just bound it to the size we want.
-    private val blueZoneIcon by lazy { vectorDrawableIcon(R.drawable.ic_zone_blue, ZONE_ICON_DP) }
-    private val whiteZoneIcon by lazy { vectorDrawableIcon(R.drawable.ic_zone_white, ZONE_ICON_DP) }
-
-    private val rejectedBlueZoneIcon by lazy {
-        vectorDrawableIcon(R.drawable.ic_zone_blue, ZONE_ICON_DP).apply {
-            colorFilter = android.graphics.PorterDuffColorFilter(COLOR_REJECTED, android.graphics.PorterDuff.Mode.SRC_IN)
-        }
-    }
-    private val rejectedWhiteZoneIcon by lazy {
-        vectorDrawableIcon(R.drawable.ic_zone_white, ZONE_ICON_DP).apply {
-            colorFilter = android.graphics.PorterDuffColorFilter(COLOR_REJECTED, android.graphics.PorterDuff.Mode.SRC_IN)
-        }
-    }
-
-    private fun vectorDrawableIcon(@DrawableRes resId: Int, sizeDp: Int): Drawable {
-        val drawable = ContextCompat.getDrawable(carContext, resId)!!.mutate()
-        val sizePx = dpToPx(sizeDp)
-        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, sizePx, sizePx)
-        drawable.draw(canvas)
-        return BitmapDrawable(carContext.resources, bitmap).apply {
-            setBounds(0, 0, sizePx, sizePx)
-        }
-    }
-
-    private fun zoneIcon(zoneType: ZoneType) =
-        if (zoneType == ZoneType.BLUE) blueZoneIcon else whiteZoneIcon
-
-    private fun rejectedZoneIcon(zoneType: ZoneType) =
-        if (zoneType == ZoneType.BLUE) rejectedBlueZoneIcon else rejectedWhiteZoneIcon
-
-    private fun zoneFillColor(zoneType: ZoneType) =
-        if (zoneType == ZoneType.BLUE) {
-            Color.argb(90, Color.red(ZONE_ACCENT), Color.green(ZONE_ACCENT), Color.blue(ZONE_ACCENT))
-        } else {
-            Color.argb(90, 255, 255, 255)
-        }
-
-  // Purple triangle with rounded corners rotated via Marker.rotation to indicate position and heading
-  private val youMarkerIcon by lazy { vectorDrawableIcon(R.drawable.ic_location_triangle, CAR_ICON_DP) }
-
-    // assets/destination.svg's pin (see ic_destination.xml's own comment
-    // on why only the pin, not the "Destination" word also in that file).
-    private val destinationMarkerIcon by lazy { vectorDrawableIcon(R.drawable.ic_destination, DESTINATION_ICON_DP) }
-
-    private val rejectedMarkerIcon by lazy {
-        circleMarkerIcon(
-            colorInt = COLOR_REJECTED,
-            diameterDp = CANDIDATE_DIAMETER_DP
-        )
-    }
-
-    private fun circleMarkerIcon(
-        @ColorInt colorInt: Int,
-        diameterDp: Int,
-    ): Drawable {
-        val diameterPx = dpToPx(diameterDp)
-        val strokePx = diameterPx * STROKE_RATIO
-        val bitmap = Bitmap.createBitmap(diameterPx, diameterPx, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val radius = diameterPx / 2f
-        canvas.drawCircle(radius, radius, radius - strokePx / 2, fillPaint(colorInt))
-        canvas.drawCircle(radius, radius, radius - strokePx / 2, strokePaint(strokePx))
-        return BitmapDrawable(carContext.resources, bitmap).apply { setBounds(0, 0, diameterPx, diameterPx) }
-    }
-
-    private fun dpToPx(dp: Int): Int =
-        (dp * carContext.resources.displayMetrics.density).toInt().coerceAtLeast(1)
-
-    private fun fillPaint(@ColorInt colorInt: Int) =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colorInt; style = Paint.Style.FILL }
-
-    private fun strokePaint(strokePx: Float) =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(200, 0, 0, 0)
-            style = Paint.Style.STROKE
-            strokeWidth = strokePx
-        }
-
-    private companion object {
-        // Rough meters-per-degree-latitude at any latitude (longitude's
-        // equivalent varies with latitude -- see boundsForRadius, which
-        // accounts for that via cos(latitude)).
-        const val METERS_PER_DEGREE_LAT = 111_320.0
-
-        // A restrained, modern palette instead of a default hue wheel.
-        @ColorInt
-        val COLOR_YOU = Color.parseColor("#9C27B0")
-        @ColorInt
-        val COLOR_REJECTED = Color.parseColor("#9E9E9E")
-        @ColorInt
-        val COLOR_REJECTED_ZONE_FILL = Color.argb(45, 150, 150, 150)
-        @ColorInt
-        val COLOR_REJECTED_ZONE_STROKE = Color.parseColor("#9E9E9E")
-
-        // The blue used by both assets/blue-zone.svg and assets/white-zone.svg
-        // (as its fill and border respectively) -- reused for the cluster
-        // box stroke/fill so the boxes visually match their icon rather
-        // than introducing a separate, unrelated color scheme.
-        @ColorInt
-        val ZONE_ACCENT = Color.parseColor("#268BCC")
-
-        const val CAR_ICON_DP = 84
-        const val CANDIDATE_DIAMETER_DP = 48 // 12dp original prototype x4
-        const val ZONE_ICON_DP = 48 // Keep parking icons at their original 48dp size
-        const val DESTINATION_ICON_DP = 80 // Doubled from original 40dp XML intrinsic size
-
-        // The pin's tip in assets/destination.svg, as a fraction of its
-        // 474x474 viewBox (computed directly from the source path's own
-        // coordinates + translate, not eyeballed) -- so the marker's
-        // anchor is the actual pin tip, not its bounding-box center,
-        // matching how a map pin is meant to indicate a precise point.
-        const val DESTINATION_ANCHOR_X = 0.5f
-        const val DESTINATION_ANCHOR_Y = 0.966f
-
-        // Was 0.18 (an 18%-of-diameter solid white ring) -- thinned out
-        // alongside the color change above; that combination is what was
-        // washing the dots out, not just the color alone.
-        const val STROKE_RATIO = 0.06f
-
-        // Single-linkage clustering distance for grouping nearby same-zone
-        // spots into one box (see clusterByProximity) -- deliberately
-        // tight (only genuinely adjacent stalls merge), not a "loosely on
-        // the same street" threshold. Chains still let a dense unbroken
-        // run form one large box; a single >EPS gap splits it. 3m was
-        // tried first and never merged anything at all -- individual
-        // stall records here are apparently spaced ~5-6m center-to-center
-        // (roughly one car length), so 3m couldn't bridge even genuinely
-        // adjacent ones. Tuned up from there by direct feedback (8 -> 10m).
-        const val CLUSTER_EPS_M = 10.0
-
-        // Padding beyond the outermost segment centers, so a box reads as
-        // a real curb strip rather than a line drawn exactly through the
-        // dots -- more padding along the row's own direction than across
-        // it, since real curb segments are long and narrow.
-        const val BOX_PAD_ALONG_M = 6.0
-        const val BOX_PAD_ACROSS_M = 4.0
-        const val NEARBY_RADIUS_M = 300.0
-    }
-
-    // -- Template: our map as the background, the ranked list as content --
+    // -- Template: our map as the background, the summary + zone switcher as content --
 
     // MapWithContentTemplate/MapController (androidx.car.app.navigation.model)
     // are @ExperimentalCarApi in Car App Library 1.4.0. Opted in deliberately
@@ -739,58 +483,119 @@ class MapSearchScreen(
                             }
                             .build()
                     )
+                    .addAction(
+                        Action.Builder()
+                            .setTitle("Parked here")
+                            .setOnClickListener { onParkedHereClicked() }
+                            .build()
+                    )
+                    .addAction(
+                        Action.Builder()
+                            .setTitle("Test drive")
+                            .setOnClickListener { startTestDrive() }
+                            .build()
+                    )
                     .build()
             )
             .build()
     }
 
     /**
-     * Experiment: a one-row PaneTemplate instead of the full ListTemplate,
-     * to test whether MapWithContentTemplate's content pane is actually
-     * sized to its content or is a fixed-width region regardless of what
-     * template occupies it (undocumented; PlaceListMapTemplate's split
-     * looked fixed too). If the pane doesn't shrink, listContentTemplate()
-     * below is the fallback.
+     * "I parked here": confirms the backend's own tracked `current` segment
+     * (exactly what repository.confirmCurrent() acts on server-side, see
+     * backend/session.py's confirm_current -- so this stays consistent with
+     * whatever the server considers current, rather than guessing from the
+     * uncapped, unranked cluster display), then saves a local ParkedSpot
+     * snapshot the phone UI can read back later. Deliberately does NOT
+     * require a `current` segment to exist: a driver can park somewhere
+     * the session never specifically recommended, in which case this still
+     * remembers the *location* (from the live "you" fix) just without a
+     * zone/expiry attached to it.
+     *
+     * Posts an immediate "saved" notification and, for blue-zone spots
+     * (the only zone type with a hard legal deadline in this data --
+     * see ParkedSpot's own doc), schedules an expiry reminder. Both are
+     * genuinely useful only via Android Auto (:app, phone-projected,
+     * same process as the phone's MainActivity); on Android Automotive OS
+     * there's no phone involved by platform design, so this still saves
+     * and still posts a notification (harmless), but the notification's
+     * tap target has nothing to resolve to there -- see
+     * ParkingReminderScheduler's doc.
      */
-  private fun computeSummaryTitle(snapshot: SessionSnapshot): String {
-    if (snapshot.state == SessionState.EXHAUSTED) {
-      return "No more candidates nearby"
+    private fun onParkedHereClicked() {
+        val snapshot = repository.session.value ?: return
+        val you = snapshot.you
+        val segment = snapshot.current
+        lifecycleScope.launch {
+            if (segment != null) repository.confirmCurrent()
+            val spot = ParkedSpot(
+                lat = you.lat,
+                lon = you.lon,
+                zoneType = segment?.zoneType,
+                addressLabel = segment?.addressLabel,
+                confirmedAtEpochMillis = System.currentTimeMillis(),
+                expiresAtEpochMillis = segment?.legalUntil?.let(::parseIsoToEpochMillis),
+                estimatedFeeChfPerHour = segment?.estimatedFeeChfPerHour,
+            )
+            saveParkedSpot(carContext, spot)
+            notifyParkingSaved(carContext, spot)
+            if (spot.expiresAtEpochMillis != null) scheduleExpiryReminder(carContext, spot)
+        }
     }
-    val active = activeCandidates(snapshot)
-    val nearby = active.filter { it.distanceFromYouM <= NEARBY_RADIUS_M }
-    val spotCount = nearby.sumOf { it.estimatedCapacity.coerceAtLeast(1) }
-    val radiusInt = NEARBY_RADIUS_M.toInt()
 
-    return when (spotCount) {
-      0 -> "No parking spaces within ${radiusInt}m"
-      1 -> "1 parking space within ${radiusInt}m"
-      else -> "$spotCount parking spaces within ${radiusInt}m"
+    private fun computeSummaryTitle(snapshot: SessionSnapshot): String {
+        if (snapshot.state == SessionState.EXHAUSTED) {
+            return "No more candidates nearby"
+        }
+        val active = MapClustering.activeCandidates(snapshot)
+        val nearby = active.filter { it.distanceFromYouM <= MapClustering.NEARBY_RADIUS_M }
+        val spotCount = nearby.sumOf { it.estimatedCapacity.coerceAtLeast(1) }
+        val radiusInt = MapClustering.NEARBY_RADIUS_M.toInt()
+
+        return when (spotCount) {
+            0 -> "No parking spaces within ${radiusInt}m"
+            1 -> "1 parking space within ${radiusInt}m"
+            else -> "$spotCount parking spaces within ${radiusInt}m"
+        }
     }
-  }
 
-  private fun summaryContentTemplate(snapshot: SessionSnapshot): Template {
-    val title = computeSummaryTitle(snapshot)
-    val pane = Pane.Builder()
-      .addRow(
-        Row.Builder()
-          .setTitle(title)
-          .build()
-      )
-      .build()
-    return PaneTemplate.Builder(pane)
-      .setTitle("Parking Blues")
-      .setHeaderAction(Action.BACK)
-      .build()
-  }
+    /**
+     * A compact Pane instead of the full ListTemplate: a live summary row,
+     * then one tappable row per zone (checkmark on whichever is active) so
+     * the driver can switch zones without leaving the map -- replaces the
+     * old separate ZoneSelectScreen entry point entirely. listContentTemplate()
+     * below is kept as an alternative if this pane ever needs to show the
+     * actual candidate list again.
+     */
+    private fun summaryContentTemplate(snapshot: SessionSnapshot): Template {
+        val pane = Pane.Builder()
+            .addRow(Row.Builder().setTitle(computeSummaryTitle(snapshot)).build())
+            .apply {
+                for (zone in ZoneFilter.entries) {
+                    val label = zone.name.lowercase().replaceFirstChar { it.uppercase() } + " zones"
+                    addRow(
+                        Row.Builder()
+                            .setTitle(if (zone == currentZone) "✓ $label" else label)
+                            .setOnClickListener { if (zone != currentZone) startSearch(zone) }
+                            .build()
+                    )
+                }
+            }
+            .build()
+        return PaneTemplate.Builder(pane)
+            .setTitle("Parking Blues")
+            .setHeaderAction(Action.APP_ICON)
+            .build()
+    }
 
     private fun listContentTemplate(snapshot: SessionSnapshot): Template {
         val items = ItemList.Builder()
-        for (segment in activeCandidates(snapshot)) {
+        for (segment in MapClustering.activeCandidates(snapshot)) {
             items.addItem(compactRow(segment))
         }
         return ListTemplate.Builder()
             .setTitle("Parking Blues")
-            .setHeaderAction(Action.BACK)
+            .setHeaderAction(Action.APP_ICON)
             .setSingleList(items.build())
             .build()
     }
@@ -821,17 +626,21 @@ class MapSearchScreen(
 
     private fun errorOrEmptyTemplate(): Template {
         val message = repository.error.value ?: "No active search."
-        val builder = MessageTemplate.Builder(message).setHeaderAction(Action.BACK)
-        if (repository.error.value != null && retryZone != null && retryLat != null && retryLon != null) {
+        val builder = MessageTemplate.Builder(message).setHeaderAction(Action.APP_ICON)
+        if (repository.error.value != null) {
             builder.addAction(
                 Action.Builder()
                     .setTitle("Retry")
-                    .setOnClickListener {
-                        lifecycleScope.launch { repository.startSearch(retryLat, retryLon, retryZone) }
-                    }
+                    .setOnClickListener { startSearch(currentZone) }
                     .build()
             )
         }
         return builder.build()
     }
 }
+
+/** ParkingSegment.legalUntil is an ISO-8601 offset datetime string, exactly
+ *  as backend/blue_zone_rules.py emits it -- parsed, not recomputed, per
+ *  the "backend owns the algorithm" rule (see ParkedSpot's doc). */
+private fun parseIsoToEpochMillis(iso: String): Long? =
+    runCatching { java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli() }.getOrNull()

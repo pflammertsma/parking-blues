@@ -12,6 +12,7 @@ androidx-lifecycle = "2.8.6"
 androidx-car-app = "1.4.0"
 play-services-location = "21.3.0"
 osmdroid = "6.1.20"
+androidx-work = "2.9.1"
 
 [libraries]
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
@@ -35,12 +36,14 @@ androidx-car-app = { module = "androidx.car.app:app", version.ref = "androidx-ca
 androidx-car-app-automotive = { module = "androidx.car.app:app-automotive", version.ref = "androidx-car-app" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "play-services-location" }
 osmdroid-android = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroid" }
+androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "androidx-work" }
 
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-icons-core = { module = "androidx.compose.material:material-icons-core" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

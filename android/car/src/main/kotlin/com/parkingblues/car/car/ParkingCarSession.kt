@@ -30,11 +30,10 @@ class ParkingCarSession : Session() {
             }
         }
 
-        return if (repository.session.value?.current != null) {
-            MapSearchScreen(carContext, repository)
-        } else {
-            ZoneSelectScreen(carContext, repository)
-        }
+        // MapSearchScreen is the whole app now -- no separate zone-pick
+        // screen first; it auto-starts a search on the last-selected zone
+        // itself (see its init block) if one isn't already running.
+        return MapSearchScreen(carContext, repository)
     }
 
     private fun hasLocationPermission() = ContextCompat.checkSelfPermission(

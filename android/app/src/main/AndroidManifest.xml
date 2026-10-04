@@ -12,6 +12,12 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Runtime-requested from MainActivity (targetSdk 33+); needed for
+         both the "parking saved" confirmation and the expiry reminder
+         (ParkingReminderScheduler). Without it, NotificationManagerCompat.notify()
+         just silently no-ops rather than crashing. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Required by PlaceListMapTemplate/MapWithContentTemplate (SearchScreen,
          MapSearchScreen in :car). POI app, not navigation, so this is the
          map-templates permission, not androidx.car.app.NAVIGATION_TEMPLATES.
@@ -33,6 +39,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.ParkingBlues">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

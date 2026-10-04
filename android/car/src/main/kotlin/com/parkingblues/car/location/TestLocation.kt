@@ -1,6 +1,7 @@
 package com.parkingblues.car.location
 
 import android.content.Context
+import com.parkingblues.shared.model.ZoneFilter
 import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -119,5 +120,36 @@ fun setTestLocationEnabled(context: Context, enabled: Boolean) {
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         .edit()
         .putBoolean(KEY_USE_TEST_LOCATION, enabled)
+        .apply()
+}
+
+private const val KEY_LAST_ZONE = "last_zone"
+
+/**
+ * What to auto-start searching for on launch, on both :app/Android Auto and
+ * :automotive -- the app no longer gates entry behind a separate zone-pick
+ * screen or a "Find parking" button (see MapSearchScreen/MainActivity):
+ * it jumps straight into the map using whatever zone was last selected,
+ * defaulting to BOTH the first time. Same per-install SharedPreferences
+ * pattern as isTestLocationEnabled above, including the reactive cache so
+ * a zone switch on one screen is visible immediately without a restart.
+ */
+val lastZoneFlow = kotlinx.coroutines.flow.MutableStateFlow<ZoneFilter?>(null)
+
+fun getLastZone(context: Context): ZoneFilter {
+    val current = lastZoneFlow.value
+    if (current != null) return current
+    val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .getString(KEY_LAST_ZONE, null)
+    val zone = raw?.let { runCatching { ZoneFilter.valueOf(it) }.getOrNull() } ?: ZoneFilter.BOTH
+    lastZoneFlow.value = zone
+    return zone
+}
+
+fun setLastZone(context: Context, zone: ZoneFilter) {
+    lastZoneFlow.value = zone
+    context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        .edit()
+        .putString(KEY_LAST_ZONE, zone.name)
         .apply()
 }

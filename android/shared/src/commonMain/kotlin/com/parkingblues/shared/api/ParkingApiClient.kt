@@ -12,12 +12,33 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+
+/**
+ * The backend's in-memory SessionStore (see AGENTS.md §2) doesn't survive
+ * a Cloud Run cold start -- an idle instance scaling to zero loses every
+ * session, so any client still holding an old session_id gets a 404 on its
+ * next call. Without this, that 404's `{"error": "session not found"}` body
+ * got force-decoded as a SessionSnapshot anyway (ktor's `.body()` doesn't
+ * check status), surfacing a confusing kotlinx.serialization
+ * "required fields missing" exception instead of the real cause -- caught
+ * specifically in ParkingSessionRepository so it can recover by starting a
+ * fresh session instead of just dead-ending on a cryptic error.
+ */
+class SessionNotFoundException(sessionId: String) :
+    Exception("Session $sessionId no longer exists on the server")
+
+private suspend inline fun <reified T> HttpResponse.bodyOrThrowIfSessionGone(sessionId: String): T {
+    if (status == HttpStatusCode.NotFound) throw SessionNotFoundException(sessionId)
+    return body()
+}
 
 @Serializable
 private data class CreateSessionRequest(
@@ -69,22 +90,22 @@ class ParkingApiClient private constructor(
     }.body()
 
     suspend fun getSession(sessionId: String): SessionSnapshot =
-        http.get("$baseUrl/api/session/$sessionId").body()
+        http.get("$baseUrl/api/session/$sessionId").bodyOrThrowIfSessionGone(sessionId)
 
     suspend fun updatePosition(sessionId: String, lat: Double, lon: Double): SessionSnapshot =
         http.post("$baseUrl/api/session/$sessionId/position") {
             contentType(ContentType.Application.Json)
             setBody(PositionRequest(lat, lon))
-        }.body()
+        }.bodyOrThrowIfSessionGone(sessionId)
 
     suspend fun rejectCurrent(sessionId: String): SessionSnapshot =
-        http.post("$baseUrl/api/session/$sessionId/reject").body()
+        http.post("$baseUrl/api/session/$sessionId/reject").bodyOrThrowIfSessionGone(sessionId)
 
     suspend fun confirmCurrent(sessionId: String): SessionSnapshot =
-        http.post("$baseUrl/api/session/$sessionId/confirm").body()
+        http.post("$baseUrl/api/session/$sessionId/confirm").bodyOrThrowIfSessionGone(sessionId)
 
     suspend fun expandRadius(sessionId: String): SessionSnapshot =
-        http.post("$baseUrl/api/session/$sessionId/expand").body()
+        http.post("$baseUrl/api/session/$sessionId/expand").bodyOrThrowIfSessionGone(sessionId)
 
     fun close() = http.close()
 }
