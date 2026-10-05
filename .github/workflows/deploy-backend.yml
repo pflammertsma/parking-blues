@@ -28,13 +28,14 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
 
       # Sign-in stays off until the repository variable GOOGLE_WEB_CLIENT_ID is
-      # set (Settings > Secrets and variables > Actions > Variables); see
+      # set (Settings > Secrets and variables > Actions > Variables). OWNER_SUBS is
+      # an Actions *secret*, so it is not readable from this public repository; see
       # deploy/auth-setup.md. Without it the API is exactly as before.
       # ^@^ makes '@' the separator so OWNER_SUBS may itself contain commas.
       - name: Deploy to Cloud Run
         env:
           GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID }}
-          OWNER_SUBS: ${{ vars.OWNER_SUBS }}
+          OWNER_SUBS: ${{ secrets.OWNER_SUBS }}
         run: |
           SIGN_IN_FLAGS=()
           if [ -n "$GOOGLE_WEB_CLIENT_ID" ]; then

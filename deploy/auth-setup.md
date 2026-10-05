@@ -37,7 +37,7 @@ Console: **APIs & Services → Credentials → Create credentials → OAuth clie
 | 1 | **Web application** | `Parking Blues backend` | No redirect URIs. **This client ID is the one the app and the server use.** |
 | 2 | Android | `Parking Blues debug` | Package `dev.lammertsma.parkingblues.debug`, SHA-1 `D0:74:11:F5:B5:5E:C0:3F:5F:84:C6:DC:7C:61:79:6B:D3:2B:CB:4B` |
 | 3 | Android | `Parking Blues release (upload key)` | Package `dev.lammertsma.parkingblues`, SHA-1 `B8:93:BC:BC:C5:1F:93:FF:1B:AD:8D:1D:EC:C8:07:20:DD:03:47:80` |
-| 4 | Android | `Parking Blues Play signing key` | Package `dev.lammertsma.parkingblues`, SHA-1 from **Play Console → Test and release → App integrity → Play app signing → App signing key certificate** |
+| 4 | Android | `Parking Blues Play signing key` | Package `dev.lammertsma.parkingblues`, SHA-1 `AC:30:A2:4D:C1:F0:48:3C:6D:9D:91:20:E9:21:21:95:6F:E1:00:7B` (the **App signing key** that Play re-signs installs with; **not** the *Upload key certificate* on the same page, which is row 3). Find it under **Play Console → Protected with Play → App signing**, behind the *SHA-1 certificate fingerprint* button. |
 
 Why four: Google checks the *package name + signing certificate* of the app asking
 for sign-in. Debug builds, builds you sign yourself, and builds installed from
@@ -55,6 +55,9 @@ Copy client **#1's** ID (ends in `.apps.googleusercontent.com`) and use it in st
 The Android clients have no secret and nothing to copy.
 
 ## 4. Firestore and the signing secret
+
+*(Done for `parking-blues-mvp` on 2026-10-05: Firestore database in europe-west6, secret
+`parking-blues-jwt-secret`, and the access grants below. Repeat only for a new project.)*
 
 ```bash
 # Accounts database in Zurich (the location cannot be changed later).
@@ -90,17 +93,25 @@ behind the `GCP_SA_KEY` GitHub secret `roles/secretmanager.viewer`.
    sets `GOOGLE_WEB_CLIENT_ID`, `AUTH_STORE=firestore`, `GOOGLE_CLOUD_PROJECT`,
    `OWNER_SUBS` and mounts the secret. It is a variable, not a secret: client IDs
    are public.
-2. **Android:** put the same ID in `android/gradle.properties`:
+2. **Android:** put the same ID in your **user-level** Gradle file,
+   `~/.gradle/gradle.properties` (on Windows `C:\Users\<you>\.gradle\gradle.properties`),
+   *not* in the repository's `android/gradle.properties`:
    `parkingblues.googleWebClientId=123456-abc.apps.googleusercontent.com`
-   and rebuild. The *Sign in with Google* menu entry appears.
+   This repository is public: keeping your ID out of it means forks and contributors
+   build without a sign-in entry instead of a visible but broken one (their builds are
+   not registered with your Google project). Rebuild and the *Sign in with Google*
+   menu entry appears. Contributors who want sign-in create their own Google project
+   and use their own client ID the same way.
 
 ## 6. Make yourself exempt from limits and blocks
 
 1. Sign in once from the app (this creates your account).
 2. Firestore console → `accounts` collection: the **document ID** is your Google
    account's `sub`. Copy it.
-3. Set a second repository variable `OWNER_SUBS` to that value (comma-separated for
-   several accounts) and redeploy. Owner accounts are never rate limited or auto-blocked.
+3. Add a repository **secret** (not a variable) named `OWNER_SUBS` with that value
+   (comma-separated for several accounts): **Settings → Secrets and variables → Actions
+   → Secrets → New repository secret**, then redeploy. Owner accounts are never rate
+   limited or auto-blocked.
 
 ## 7. Check it works
 
