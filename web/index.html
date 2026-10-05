@@ -3,13 +3,31 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Parking Blues (MVP)</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <title>Parking Blues — Paul Lammertsma</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Outfit:wght@400;700&display=swap" rel="stylesheet" />
+  <script>
+    // Apply the saved theme before first paint (default: dark, like the rest
+    // of lammertsma.dev). app.js owns the toggle; the legal pages only need this.
+    try {
+      var t = localStorage.getItem("parking-blues-theme") || "dark";
+      if (t !== "system") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  </script>
+  <link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body>
   <header class="topbar">
-    <h1>Parking Blues</h1>
+    <div class="topbar-brand">
+      <a class="site-home" href="/" title="Paul Lammertsma — home" aria-label="Paul Lammertsma — home"><img src="/favicon.png" alt="" width="32" height="32" /></a>
+      <h1>Parking Blues</h1>
+    </div>
     <div class="topbar-actions">
       <div class="account" id="account" hidden>
         <button type="button" id="account-btn" class="reset-btn" aria-haspopup="true" aria-expanded="false">Sign in</button>
@@ -38,21 +56,19 @@
           <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5" /><path d="M8 20h8M12 16v4" /></svg>
         </button>
       </div>
-      <button id="reset" class="reset-btn" title="Reset">Reset</button>
+      <button id="reset" class="reset-btn" title="Start a new search" hidden>New search</button>
     </div>
   </header>
 
   <div id="map"></div>
-  <p class="hint">
-    Drag the blue pin to set your destination. Once a search is
-    running, drag the red dot to simulate driving -- it updates live as
-    you drag. Reach or pass the highlighted candidate without confirming
-    it, and it'll get auto-rejected; drift toward a different candidate
-    and it'll become the new top pick.
+  <p class="hint" id="map-hint">
+    Drag the pin to where you're headed, or use your location.
   </p>
 
+  <p id="status" class="status" role="status" hidden></p>
+
   <section id="setup">
-    <h2>1. Start a search</h2>
+    <h2>Find parking</h2>
     <fieldset>
       <legend>Zone</legend>
       <label><input type="radio" name="zone" value="blue" /> Blue zone</label>
@@ -73,14 +89,12 @@
       </select>
     </label>
     <p class="hint">
-      Factors in the current time -- e.g. a blue-zone spot may show as
-      fitting a 2-hour stay right now because it's within the free lunch
-      hour or overnight, even though its normal cap is 60 minutes. See
-      README section 9.2.
+      The current time is taken into account: a blue-zone spot can fit a
+      longer stay during the free lunch hour or overnight than its usual
+      60-minute limit.
     </p>
 
     <div class="position-row">
-      <span id="origin-readout">Destination: 47.37920, 8.53131</span>
       <button id="use-geolocation">Use my location</button>
     </div>
 
@@ -88,20 +102,19 @@
   </section>
 
   <section id="session" hidden>
-    <h2>2. Current target</h2>
+    <h2>Best spot</h2>
     <p id="duration-readout" class="hint"></p>
     <div id="current" class="card"></div>
 
     <div id="exhausted" hidden>
-      <p>No more candidates nearby, even after automatically widening the search radius. You can push further out manually:</p>
-      <button id="expand">Expand search radius further</button>
+      <p>No more spots nearby, even after automatically widening the search. You can search further out:</p>
+      <button id="expand">Search further out</button>
     </div>
 
-    <h3>Up next</h3>
-    <ol id="upcoming"></ol>
-
-    <h3>Event log</h3>
-    <ul id="log"></ul>
+    <div id="alternatives">
+      <h3>Other options</h3>
+      <ol id="upcoming"></ol>
+    </div>
   </section>
 
   <footer class="site-footer">
@@ -109,6 +122,6 @@
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

@@ -1,48 +1,140 @@
+/* Styled to match lammertsma.dev (see /assets/css/main.css): dark glass
+   surfaces, Inter body text, Outfit headings, electric-blue accent. The dark
+   palette mirrors the site's tokens exactly; the light palette is an opt-in
+   counterpart built from the same accent, radii and fonts. */
 :root {
-  --bg: #ffffff;
-  --fg: #1a1a1a;
-  --muted-fg: #555555;
-  --border: #cccccc;
-  --card-bg: transparent;
-  --log-bg: #f5f5f5;
-  --accent-bg: #e6e6e6;
-  --zone-blue: #1560bd;
-  --zone-white: #555555;
+  --primary: hsl(200, 100%, 50%);
+  --primary-dark: hsl(200, 100%, 40%);
+  --primary-glow: hsla(200, 100%, 50%, 0.3);
+  --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  --glass-blur: blur(16px);
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-heading: "Outfit", "Inter", system-ui, sans-serif;
+
+  /* Dark (site default) */
+  --bg: hsl(222, 47%, 11%);
+  --bg-glow-1: hsla(210, 100%, 20%, 0.15);
+  --bg-glow-2: hsla(200, 100%, 20%, 0.15);
+  --fg: hsl(210, 20%, 98%);
+  --muted-fg: hsl(210, 10%, 70%);
+  --border: rgba(255, 255, 255, 0.1);
+  --card-bg: rgba(255, 255, 255, 0.04);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --log-bg: rgba(0, 0, 0, 0.25);
+  --accent-bg: rgba(255, 255, 255, 0.1);
+  --link: var(--primary);
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --zone-blue: #5b9bff;
+  --zone-white: #c8c8c8;
+  --spot-white: #f1f5f9;
+  --spot-rejected-fill: #4b5563;
+  --spot-rejected-stroke: #6b7280;
+  --map-tile-filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #16181c;
-    --fg: #eaeaea;
-    --muted-fg: #a3a3a3;
-    --border: #3a3d42;
-    --card-bg: #1e2126;
-    --log-bg: #1e2126;
-    --accent-bg: #2a2d33;
-    --zone-blue: #5b9bff;
-    --zone-white: #c8c8c8;
+/* "Match system": app.js removes data-theme entirely for this choice. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: hsl(210, 33%, 98%);
+    --bg-glow-1: hsla(210, 100%, 80%, 0.25);
+    --bg-glow-2: hsla(200, 100%, 80%, 0.2);
+    --fg: hsl(222, 47%, 11%);
+    --muted-fg: hsl(215, 16%, 38%);
+    --border: rgba(15, 23, 42, 0.14);
+    --card-bg: rgba(255, 255, 255, 0.75);
+    --surface-hover: rgba(15, 23, 42, 0.05);
+    --log-bg: rgba(15, 23, 42, 0.04);
+    --accent-bg: rgba(15, 23, 42, 0.08);
+    --link: hsl(200, 100%, 36%);
+    --shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
+    --zone-blue: #1560bd;
+    --zone-white: #555555;
+    --spot-white: #555555;
+    --spot-rejected-fill: #bbbbbb;
+    --spot-rejected-stroke: #999999;
+    --map-tile-filter: none;
+    color-scheme: light;
   }
 }
 
-:root[data-theme="dark"] {
-  --bg: #16181c;
-  --fg: #eaeaea;
-  --muted-fg: #a3a3a3;
-  --border: #3a3d42;
-  --card-bg: #1e2126;
-  --log-bg: #1e2126;
-  --accent-bg: #2a2d33;
-  --zone-blue: #5b9bff;
-  --zone-white: #c8c8c8;
+:root[data-theme="light"] {
+  --bg: hsl(210, 33%, 98%);
+  --bg-glow-1: hsla(210, 100%, 80%, 0.25);
+  --bg-glow-2: hsla(200, 100%, 80%, 0.2);
+  --fg: hsl(222, 47%, 11%);
+  --muted-fg: hsl(215, 16%, 38%);
+  --border: rgba(15, 23, 42, 0.14);
+  --card-bg: rgba(255, 255, 255, 0.75);
+  --surface-hover: rgba(15, 23, 42, 0.05);
+  --log-bg: rgba(15, 23, 42, 0.04);
+  --accent-bg: rgba(15, 23, 42, 0.08);
+  --link: hsl(200, 100%, 36%);
+  --shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
+  --zone-blue: #1560bd;
+  --zone-white: #555555;
+  --spot-white: #555555;
+  --spot-rejected-fill: #bbbbbb;
+  --spot-rejected-stroke: #999999;
+  --map-tile-filter: none;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  overflow-x: hidden;
 }
 
 body {
-  font-family: system-ui, sans-serif;
-  max-width: 640px;
-  margin: 0 auto 2rem;
-  padding: 0 1rem;
-  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 0 0 2rem;
+  color: var(--muted-fg);
   background: var(--bg);
+  background-image:
+    radial-gradient(at 0% 0%, var(--bg-glow-1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, var(--bg-glow-2) 0px, transparent 50%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--fg);
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+a:hover {
+  text-shadow: 0 0 10px var(--primary-glow);
+}
+
+p {
+  margin: 10px 0 4px;
+}
+
+/* ---- Top bar -------------------------------------------------------- */
+
+/* The header spans the full page width; everything else sits in a centered
+   720px column. */
+body > :not(.topbar):not(script) {
+  width: min(720px, calc(100% - 2rem));
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .topbar {
@@ -50,14 +142,49 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.6rem 0;
+  padding: 0.9rem 1.5rem;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+/* Site icon linking back to the lammertsma.dev homepage. */
+.site-home {
+  display: flex;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: var(--transition);
+}
+
+.site-home:hover {
+  border-color: var(--primary);
+}
+
+.site-home img {
+  display: block;
+  width: 32px;
+  height: 32px;
 }
 
 .topbar h1 {
-  font-size: 1.25rem;
+  font-size: 1.4rem;
+  letter-spacing: 0.5px;
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar h1 a {
+  color: inherit;
 }
 
 .topbar-actions {
@@ -69,20 +196,23 @@ body {
 .theme-toggle {
   display: flex;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
+  background: var(--card-bg);
+  backdrop-filter: var(--glass-blur);
 }
 
 .theme-toggle button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 2.1rem;
+  height: 2.1rem;
   padding: 0;
   border: none;
   border-left: 1px solid var(--border);
-  background: var(--bg);
+  border-radius: 0;
+  background: transparent;
   color: var(--muted-fg);
 }
 
@@ -90,9 +220,16 @@ body {
   border-left: none;
 }
 
+.theme-toggle button:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+  transform: none;
+  box-shadow: none;
+}
+
 .theme-toggle button[aria-pressed="true"] {
   background: var(--accent-bg);
-  color: var(--fg);
+  color: var(--primary);
 }
 
 .theme-toggle svg {
@@ -105,17 +242,59 @@ body {
   stroke-linejoin: round;
 }
 
-.reset-btn {
-  font-size: 0.85rem;
-  padding: 0.35rem 0.7rem;
+/* ---- Controls ------------------------------------------------------- */
+
+button {
+  font-family: var(--font-body);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  color: var(--fg);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: var(--transition);
 }
+
+button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--primary);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+#start,
+#expand {
+  background: var(--primary);
+  border-color: transparent;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0.7rem 1.6rem;
+}
+
+#start:hover:not(:disabled),
+#expand:hover:not(:disabled) {
+  background: var(--primary-dark);
+  border-color: transparent;
+}
+
+/* ---- Optional sign-in ------------------------------------------------ */
 
 .account {
   position: relative;
 }
 
 #account-btn {
-  max-width: 10rem;
+  max-width: 7rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -124,22 +303,30 @@ body {
 .account-panel {
   position: absolute;
   right: 0;
-  top: calc(100% + 0.4rem);
+  top: calc(100% + 0.5rem);
   z-index: 1000; /* above the Leaflet panes */
-  min-width: 15rem;
-  padding: 0.75rem;
+  width: 16rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.9rem;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  background: var(--bg); /* opaque: the glass surfaces would let the map show through */
+  box-shadow: var(--shadow);
 }
 
 .account-panel p {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.6rem;
 }
 
 .account-panel .account-name {
   font-weight: 600;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.account-panel .hint {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
 }
 
 .account-panel button {
@@ -149,7 +336,53 @@ body {
 }
 
 .account-panel .danger {
-  color: #c62828;
+  color: #ef5350;
+}
+
+.reset-btn {
+  font-size: 0.85rem;
+  padding: 0.35rem 0.8rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .topbar h1 {
+    font-size: 1.15rem;
+  }
+
+  .topbar-actions {
+    gap: 0.35rem;
+  }
+
+  #account-btn {
+    max-width: 5rem;
+  }
+}
+
+select {
+  font-family: var(--font-body);
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--fg);
+}
+
+/* The popup list is drawn by the browser and ignores the select's translucent
+   background, so give the options an opaque one or they turn white-on-white. */
+select option {
+  background-color: var(--bg);
+  color: var(--fg);
+}
+
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+input[type="radio"] {
+  accent-color: var(--primary);
 }
 
 .hint {
@@ -157,9 +390,43 @@ body {
   font-size: 0.9rem;
 }
 
+/* ---- Setup / session ------------------------------------------------ */
+
+#setup,
+#session {
+  margin-top: 1.5rem;
+}
+
+#setup h2,
+#session h2 {
+  font-size: 1.3rem;
+  margin: 0 0 0.75rem;
+}
+
+#session h3 {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 1.5rem 0 0.5rem;
+}
+
 fieldset {
   border: 1px solid var(--border);
-  margin-bottom: 0.75rem;
+  border-radius: 12px;
+  background: var(--card-bg);
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 1rem 0.75rem;
+}
+
+legend {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--fg);
+  padding: 0 0.4rem;
+}
+
+fieldset label {
+  margin-right: 1rem;
 }
 
 .position-row {
@@ -167,7 +434,7 @@ fieldset {
   gap: 1rem;
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 0.75rem;
+  margin: 0.75rem 0;
 }
 
 .position-row input {
@@ -178,22 +445,24 @@ fieldset {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
   margin-bottom: 0.5rem;
-}
-
-.duration-row select {
-  padding: 0.3rem 0.4rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg);
-  color: var(--fg);
 }
 
 #map {
   height: 350px;
   margin-bottom: 0.5rem;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  /* Keeps Leaflet's panes inside the rounded corners. */
+  overflow: hidden;
+}
+
+/* The map tiles are CARTO's light basemap; invert them in the dark theme
+   rather than switching tile sets, so markers and popups are untouched. */
+.leaflet-tile-pane {
+  filter: var(--map-tile-filter);
 }
 
 .you-dot {
@@ -205,26 +474,20 @@ fieldset {
   box-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
 }
 
-button {
-  cursor: pointer;
-  padding: 0.4rem 0.8rem;
-  color: var(--fg);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-
-button:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
 .card {
   background: var(--card-bg);
+  backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 1rem 1.25rem;
   margin-bottom: 0.75rem;
+  transition: var(--transition);
+}
+
+.card:hover {
+  background: var(--surface-hover);
+  border-color: var(--primary);
 }
 
 /* Not scoped to .card: also used inside map popups (segmentDetailsHtml in
@@ -244,54 +507,100 @@ button:disabled {
 .leaflet-popup-tip {
   background: var(--bg);
   color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 12px;
+  font-family: var(--font-body);
 }
 
 .leaflet-popup-close-button {
   color: var(--muted-fg) !important;
 }
 
-#log {
-  font-family: ui-monospace, monospace;
-  font-size: 0.85rem;
-  max-height: 10rem;
+.leaflet-container a {
+  color: var(--link);
+}
+
+.leaflet-control-attribution {
+  background: var(--card-bg) !important;
+  color: var(--muted-fg) !important;
+}
+
+/* Long result lists scroll inside their own block instead of stretching the page. */
+#upcoming {
+  max-height: 11rem;
   overflow-y: auto;
+  margin: 0;
+  padding: 0.5rem 1rem 0.5rem 2.5rem;
   background: var(--log-bg);
-  padding: 0.5rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 0.9rem;
 }
 
-/* Privacy policy and terms of use pages, plus the footer linking to them. */
-body.legal-page {
-  max-width: 720px;
+#upcoming li {
+  margin: 0.35rem 0;
 }
 
-.topbar h1 a {
-  color: inherit;
-  text-decoration: none;
+/* Map marker colors. Rejected ("already checked") spots must read as fainter
+   than live ones in both themes: lighter than white-zone spots on the light
+   map, darker than them on the dark map. */
+.spot-blue {
+  stroke: var(--zone-blue);
+  fill: var(--zone-blue);
 }
 
-.legal-nav a,
-.legal a,
-.site-footer a {
-  color: var(--zone-blue);
+.spot-white {
+  stroke: var(--spot-white);
+  fill: var(--spot-white);
+}
+
+.spot-rejected {
+  stroke: var(--spot-rejected-stroke);
+  fill: var(--spot-rejected-fill);
+}
+
+.status {
+  background: var(--log-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--fg);
+  font-size: 0.9rem;
+  padding: 0.6rem 1rem;
+}
+
+/* ---- Privacy policy and terms of use -------------------------------- */
+
+.legal-nav a {
+  font-weight: 600;
 }
 
 .legal {
-  line-height: 1.6;
+  background: var(--card-bg);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: 2rem 2.25rem;
+  line-height: 1.7;
 }
 
 .legal h2 {
-  font-size: 1.6rem;
-  margin: 0.5rem 0 0.25rem;
+  font-size: 2rem;
+  letter-spacing: 0.5px;
+  margin: 0 0 0.25rem;
 }
 
 .legal h3 {
-  font-size: 1.1rem;
-  margin: 1.75rem 0 0.4rem;
+  font-size: 1.2rem;
+  margin: 2rem 0 0.4rem;
 }
 
 .legal h4 {
   font-size: 1rem;
-  margin: 1.1rem 0 0.25rem;
+  margin: 1.25rem 0 0.25rem;
 }
 
 .legal .meta {
@@ -299,12 +608,20 @@ body.legal-page {
   margin-top: 0;
 }
 
+.legal strong {
+  color: var(--fg);
+}
+
 .legal ul {
   padding-left: 1.25rem;
 }
 
 .legal li {
-  margin: 0.3rem 0;
+  margin: 0.35rem 0;
+}
+
+.legal li::marker {
+  color: var(--primary);
 }
 
 .retention {
@@ -317,19 +634,38 @@ body.legal-page {
 .retention td {
   text-align: left;
   vertical-align: top;
-  padding: 0.45rem 0.5rem;
+  padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--border);
 }
 
 .retention th {
-  color: var(--muted-fg);
-  font-weight: 600;
+  font-family: var(--font-heading);
+  color: var(--fg);
 }
+
+/* Wide tables scroll inside the card instead of the page on narrow screens. */
+.legal .table-wrap {
+  overflow-x: auto;
+}
+
+/* ---- Footer --------------------------------------------------------- */
 
 .site-footer {
   margin-top: 2.5rem;
-  padding-top: 1rem;
+  padding: 1.5rem 0 0;
   border-top: 1px solid var(--border);
   color: var(--muted-fg);
-  font-size: 0.9rem;
+  font-size: 14px;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  body {
+    font-size: 16px;
+  }
+
+  .legal {
+    padding: 1.25rem 1.1rem;
+    border-radius: 16px;
+  }
 }

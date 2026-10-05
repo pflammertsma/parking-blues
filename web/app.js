@@ -34,18 +34,15 @@ let youMarker = null;
 let radiusCircle = null;
 let candidateLayer = L.layerGroup().addTo(map);
 
-function updateOriginReadout() {
-  const { lat, lng } = originMarker.getLatLng();
-  $("origin-readout").textContent = `Destination: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-}
+const SETUP_HINT = "Drag the pin to where you're headed, or use your location.";
+const SESSION_HINT =
+  "Drag the red dot to update where you are. Spots you pass without stopping are skipped, and a closer spot becomes the best one as you approach it.";
 
-originMarker.on("dragend", updateOriginReadout);
-
-function log(message) {
-  const li = document.createElement("li");
-  const time = new Date().toLocaleTimeString();
-  li.textContent = `[${time}] ${message}`;
-  $("log").prepend(li);
+// Shows (or, with no message, clears) a short notice under the map.
+function showStatus(message) {
+  const el = $("status");
+  el.textContent = message || "";
+  el.hidden = !message;
 }
 
 function selectedZone() {
@@ -99,12 +96,12 @@ function renderSegment(container, segment) {
   container.innerHTML = segmentDetailsHtml(segment);
 }
 
+// Marker colors come from style.css (.spot-blue / .spot-white / .spot-rejected)
+// so they can follow the light/dark theme; only geometry is set here.
 function candidateMarker(segment, highlighted) {
-  const color = segment.zone_type === "blue" ? "#1560bd" : "#555";
   return L.circleMarker([segment.lat, segment.lon], {
+    className: segment.zone_type === "blue" ? "spot-blue" : "spot-white",
     radius: highlighted ? 10 : 6,
-    color,
-    fillColor: color,
     fillOpacity: highlighted ? 0.9 : 0.4,
     weight: highlighted ? 3 : 1,
   }).bindPopup(`<div class="popup-card">${segmentDetailsHtml(segment)}</div>`);
@@ -112,9 +109,8 @@ function candidateMarker(segment, highlighted) {
 
 function rejectedMarker(segment) {
   return L.circleMarker([segment.lat, segment.lon], {
+    className: "spot-rejected",
     radius: 6,
-    color: "#999",
-    fillColor: "#bbb",
     fillOpacity: 0.5,
     weight: 1,
   }).bindPopup(
@@ -150,14 +146,6 @@ function renderMap(data) {
 }
 
 function render(data) {
-  // "tracking" fires on every drag tick -- logging it would drown out the
-  // events that actually matter (rejection, retargeting, expansion).
-  if (data.event && data.event !== "tracking") {
-    const target = data.current ? data.current.address_label : "(none)";
-    const radiusNote = data.event === "expanded" ? ` (radius now ${data.radius_m} m)` : "";
-    log(`${data.event}${radiusNote} -> current target: ${target}`);
-  }
-
   renderSegment($("current"), data.current);
   renderMap(data);
 
@@ -172,9 +160,11 @@ function render(data) {
   list.innerHTML = "";
   for (const segment of data.upcoming) {
     const li = document.createElement("li");
-    li.textContent = `${segment.address_label} (${segment.zone_type}, ${segment.distance_from_you_m} m from you)`;
+    const zone = segment.zone_type === "blue" ? "Blue" : "White";
+    li.textContent = `${segment.address_label} · ${zone} zone · ${segment.distance_from_you_m} m`;
     list.appendChild(li);
   }
+  $("alternatives").hidden = data.upcoming.length === 0;
 }
 
 // When this page is served as static files from lammertsma.dev (e.g.
@@ -389,7 +379,10 @@ function renderAccount() {
   $("account").hidden = false;
   $("signed-out").hidden = !!auth;
   $("signed-in").hidden = !auth;
-  $("account-btn").textContent = auth ? auth.account.name || auth.account.email || "Account" : "Sign in";
+  // First name only: the top bar is tight on a phone. The panel shows the full name.
+  $("account-btn").textContent = auth
+    ? (auth.account.name || "").split(" ")[0] || auth.account.email || "Account"
+    : "Sign in";
   if (auth) {
     $("account-name").textContent = auth.account.name || auth.account.email;
     $("account-email").textContent = auth.account.name ? auth.account.email : "";
@@ -425,7 +418,7 @@ $("delete-account").addEventListener("click", async () => {
     clearAuth();
     setAccountPanelOpen(false);
   } catch (e) {
-    window.alert(`Could not delete the account: ${e.message}`);
+    showStatus(`Couldn't delete the account: ${e.message}`);
   }
 });
 
@@ -434,7 +427,7 @@ if (auth) refreshAccessToken();
 
 $("use-geolocation").addEventListener("click", () => {
   if (!navigator.geolocation) {
-    log("Geolocation is not available in this browser.");
+    showStatus("Your browser can't share your location.");
     return;
   }
   navigator.geolocation.getCurrentPosition(
@@ -442,9 +435,9 @@ $("use-geolocation").addEventListener("click", () => {
       const { latitude, longitude } = pos.coords;
       originMarker.setLatLng([latitude, longitude]);
       map.setView([latitude, longitude], 16);
-      updateOriginReadout();
+      showStatus("");
     },
-    (err) => log(`Geolocation failed: ${err.message}`)
+    () => showStatus("Couldn't get your location. Allow location access, or drag the pin instead.")
   );
 });
 
@@ -452,13 +445,22 @@ $("start").addEventListener("click", async () => {
   const { lat, lng } = originMarker.getLatLng();
   const zone = selectedZone();
   const duration_minutes = selectedDuration();
-  const data = await api("/api/session", {
-    method: "POST",
-    body: JSON.stringify({ lat, lon: lng, zone, duration_minutes }),
-  });
+  let data;
+  try {
+    data = await api("/api/session", {
+      method: "POST",
+      body: JSON.stringify({ lat, lon: lng, zone, duration_minutes }),
+    });
+  } catch (err) {
+    showStatus(`Couldn't start the search: ${err.message}`);
+    return;
+  }
+  showStatus("");
   sessionId = data.session_id;
   $("setup").hidden = true;
   $("session").hidden = false;
+  $("reset").hidden = false;
+  $("map-hint").textContent = SESSION_HINT;
 
   originMarker.dragging.disable();
   youMarker = L.marker([lat, lng], { draggable: true, icon: youIcon })
@@ -470,7 +472,10 @@ $("start").addEventListener("click", async () => {
   // actual drive-by instead of needing repeated discrete drops. Throttled
   // by both a time interval and an in-flight guard so drag ticks don't pile
   // up requests; dragend always sends the final position.
-  const POSITION_UPDATE_INTERVAL_MS = 200;
+  // The server allows 90 position updates per minute per session (one every
+  // ~667 ms), so stay safely under it: faster than that and it answers 429
+  // and silently stops processing the drag.
+  const POSITION_UPDATE_INTERVAL_MS = 800;
   let positionRequestInFlight = false;
   let lastPositionSentAt = 0;
 
@@ -484,6 +489,9 @@ $("start").addEventListener("click", async () => {
         body: JSON.stringify({ lat: pos.lat, lon: pos.lng }),
       });
       render(body);
+      showStatus("");
+    } catch (err) {
+      showStatus(`Couldn't update your position: ${err.message}`);
     } finally {
       positionRequestInFlight = false;
     }
@@ -495,13 +503,16 @@ $("start").addEventListener("click", async () => {
   });
   youMarker.on("dragend", () => sendPosition(youMarker.getLatLng()));
 
-  log(`Session started (radius ${data.radius_m} m)`);
   render(data);
 });
 
 $("expand").addEventListener("click", async () => {
-  const data = await api(`/api/session/${sessionId}/expand`, { method: "POST" });
-  render(data);
+  try {
+    render(await api(`/api/session/${sessionId}/expand`, { method: "POST" }));
+    showStatus("");
+  } catch (err) {
+    showStatus(`Couldn't widen the search: ${err.message}`);
+  }
 });
 
 $("reset").addEventListener("click", () => {
@@ -516,11 +527,13 @@ $("reset").addEventListener("click", () => {
     radiusCircle = null;
   }
   originMarker.dragging.enable();
-  $("log").innerHTML = "";
   $("duration-readout").textContent = "";
   $("exhausted").hidden = true;
   $("session").hidden = true;
+  $("reset").hidden = true;
   $("setup").hidden = false;
+  $("map-hint").textContent = SETUP_HINT;
+  showStatus("");
 });
 
 // Theme: "light" / "dark" force a choice regardless of OS setting; "system"
@@ -546,4 +559,4 @@ for (const btn of themeButtons) {
   });
 }
 
-applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "system");
+applyTheme(localStorage.getItem(THEME_STORAGE_KEY) || "dark");

@@ -80,6 +80,19 @@ Built (optional Google sign-in, see `backend/auth.py`, `AuthRepository.kt` and `
 - [ ] Play Console: update the Data safety form (email, name, identifiers) and use the privacy page's `#delete-account` anchor as the account-deletion URL.
 - [ ] Sign-in UX polish: show the account in the About screen; offer sign-in again after a "Please sign in again" notice.
 
+## Client-side rejection (offline, fewer requests, less location disclosure)
+
+Today the server decides everything: clients post a position about once a second and `backend/session.py` runs the approach/depart rejection, heading and retargeting. Moving the "did I drive past it" check to the clients would work offline, cut Cloud Run requests (and so hosting cost), and send far less location data. This reverses the "do not duplicate the algorithm in clients" rule in `AGENTS.md` section 2, so decide the shape before building it.
+
+Why it came up: the web page's drag simulator sent a position every 200 ms against the 90 per minute per-session limit (`RateLimits.position_per_session`), so after ~20 s of dragging the server answered `429` and stopped processing positions, and spots passed afterwards were never disqualified. The web page now sends at most one update per 800 ms (stopgap). Separately, a spot is only rejected when a *sampled* position comes within `APPROACH_THRESHOLD_M` (20 m) and a later one is `DEPART_MARGIN_M` (15 m) farther, so a fast drag or a low fix rate can jump over a spot without rejecting it.
+
+- [ ] **Decide the split.** Sketch: the client keeps the candidate list it already receives and does the approach/depart check locally on every fix (no rate limit, works offline once a search has loaded), reporting only rejections to the server (`POST .../reject` with segment ids). The server still needs positions for retargeting (`_pull_in_local_cluster` uses the full dataset), but only every few seconds or after moving ~50 m, not every second.
+- [ ] **Make passing detection robust to sparse fixes:** treat a spot as passed when the *line segment between two consecutive positions* came within 20 m of it, not only the positions themselves. Do this regardless of where the check ends up (it also fixes fast drags and low GPS rates).
+- [ ] **Avoid three copies of the logic.** The check is small (haversine, closest approach per segment, depart margin); put it in `:shared` (`commonMain`, already KMP and tested like `ParkingSessionRepositoryDriveByTest`) for Android/Auto/Automotive, and keep a tiny JS port in `web/app.js`. Port the cases from `tests/test_session.py` to both, and keep the server copy only if it is still needed for old clients.
+- [ ] **Server:** accept client-reported rejections into `rejected_ids`/`rejected` so radius expansion and retargeting still exclude them; keep the 429 backoff. Decide how much to trust the reports (low risk: this only changes which spots a user sees).
+- [ ] **Update the docs that currently promise the opposite:** `AGENTS.md` (backend as single source of truth, clients just submit GPS), `web/privacy.html` (location "about once a second"), the Play Data safety form, and this repo's README section 4.
+- [x] **Keep the web page in step:** the restyled pages, `?v=` cache-busting and the 800 ms position throttle were ported from `lammertsma-dev/public/projects/parking-blues/` into `web/` (which is the source of truth; edit it here, never in `lammertsma-dev`).
+
 ## Car (Android Auto / Automotive OS)
 - [ ] Confirm on the DHU that the icon-only Recenter button and the debug-only ⋮ button fit the action strip, and that Developer options and the test-location toggle work.
 - [ ] Verify the heading and position smoothing on a real drive (arrow follows travel direction, no hopping).

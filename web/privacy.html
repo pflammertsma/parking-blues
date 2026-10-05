@@ -3,13 +3,31 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Privacy Policy (Parking Blues)</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <title>Privacy Policy (Parking Blues) — Paul Lammertsma</title>
   <meta name="description" content="How the Parking Blues app and web page handle your data." />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Outfit:wght@400;700&display=swap" rel="stylesheet" />
+  <script>
+    // Apply the saved theme before first paint (default: dark, like the rest
+    // of lammertsma.dev). app.js owns the toggle; the legal pages only need this.
+    try {
+      var t = localStorage.getItem("parking-blues-theme") || "dark";
+      if (t !== "system") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  </script>
+  <link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body class="legal-page">
   <header class="topbar">
-    <h1><a href="./">Parking Blues</a></h1>
+    <div class="topbar-brand">
+      <a class="site-home" href="/" title="Paul Lammertsma — home" aria-label="Paul Lammertsma — home"><img src="/favicon.png" alt="" width="32" height="32" /></a>
+      <h1><a href="./">Parking Blues</a></h1>
+    </div>
     <nav class="legal-nav"><a href="terms.html">Terms of use</a></nav>
   </header>
 
@@ -156,7 +174,7 @@
     </p>
 
     <h3>How long data is kept</h3>
-    <table class="retention">
+    <div class="table-wrap"><table class="retention">
       <thead><tr><th>Data</th><th>Where</th><th>Kept</th></tr></thead>
       <tbody>
         <tr><td>Search and live position</td><td>Server memory</td><td>Up to 2 hours after last activity; lost on restart</td></tr>
@@ -165,7 +183,7 @@
         <tr><td>Account (identifier, email, name, status), only if you sign in</td><td>Firestore, Zurich</td><td>Until you delete the account</td></tr>
         <tr><td>Last zone, parked spot</td><td>Your device</td><td>Until you clear it or uninstall</td></tr>
       </tbody>
-    </table>
+    </table></div>
 
     <h3>Where data is processed</h3>
     <p>

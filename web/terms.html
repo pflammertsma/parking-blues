@@ -3,13 +3,31 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Terms of Use (Parking Blues)</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <title>Terms of Use (Parking Blues) — Paul Lammertsma</title>
   <meta name="description" content="The terms for using the Parking Blues app, web page and API." />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Outfit:wght@400;700&display=swap" rel="stylesheet" />
+  <script>
+    // Apply the saved theme before first paint (default: dark, like the rest
+    // of lammertsma.dev). app.js owns the toggle; the legal pages only need this.
+    try {
+      var t = localStorage.getItem("parking-blues-theme") || "dark";
+      if (t !== "system") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  </script>
+  <link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body class="legal-page">
   <header class="topbar">
-    <h1><a href="./">Parking Blues</a></h1>
+    <div class="topbar-brand">
+      <a class="site-home" href="/" title="Paul Lammertsma — home" aria-label="Paul Lammertsma — home"><img src="/favicon.png" alt="" width="32" height="32" /></a>
+      <h1><a href="./">Parking Blues</a></h1>
+    </div>
     <nav class="legal-nav"><a href="privacy.html">Privacy policy</a></nav>
   </header>
 
