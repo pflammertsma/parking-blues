@@ -68,8 +68,10 @@ Done: per-IP limits on session creation, per-session limits on position updates 
 
 ### Accounts and automatic abuse blocking
 Built (optional Google sign-in, see `backend/auth.py`, `AuthRepository.kt` and `deploy/auth-setup.md`): anonymous use stays the default and sign-in is in the menu; backend verifies the Google ID token and issues a 15-minute access token plus a rotating 30-day refresh token (hashes stored in Firestore, Zurich); tiered limits per account instead of per IP; escalating automatic blocks (1 h, 1 day, 1 week, permanent) after repeated rate-limit breaches; owner accounts exempt via `OWNER_SUBS`; delete-account endpoint and menu item; tokens encrypted on the device with the Keystore and excluded from backups.
-- [ ] **Do the Google Cloud and GitHub setup** in `deploy/auth-setup.md` (OAuth consent screen, 4 client IDs, Firestore, secret, repository variables). Nothing works end to end until this is done.
-- [ ] **Try a real sign-in** on a phone (debug, release and a Play internal-track install each need their own Android client ID), then set `OWNER_SUBS` to your own account.
+- [x] **Google Cloud and GitHub setup** from `deploy/auth-setup.md` is done (consent screen, web client plus debug/release/Play Android clients, Firestore in Zurich, signing secret, `GOOGLE_WEB_CLIENT_ID` variable); sign-in is live on the backend.
+- [x] Real sign-in verified on the emulator (debug build): the account and a hashed refresh token appear in Firestore.
+- [ ] **Set the `OWNER_SUBS` GitHub secret** to your own account id and redeploy, then confirm the role shows `owner` in Firestore.
+- [ ] Try a sign-in from a release build and from a Play internal-track install (each has its own Android client).
 - [ ] **Standalone Automotive OS app:** it has no phone to share a login with, so it stays anonymous for now. Add sign-in with Car App Library's `SignInTemplate` (QR code or on-car Google account) using the same `AuthRepository`. Android Auto needs nothing: it runs inside the phone app and uses its login.
 - [ ] Web MVP stays anonymous; add Google Identity Services sign-in there if wanted (needs its own web client origin).
 - [ ] **Abuse detection beyond rate limits:** flag scraping patterns (systematic coverage of the whole city, very high search volume without movement) and impossible movement (teleporting positions); decay strikes after a long good period; an admin way to list, unblock and permanently block accounts without editing Firestore by hand.
