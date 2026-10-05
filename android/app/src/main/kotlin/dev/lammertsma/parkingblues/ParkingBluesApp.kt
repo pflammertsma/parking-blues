@@ -3,6 +3,7 @@ package dev.lammertsma.parkingblues
 import android.app.Application
 import dev.lammertsma.parkingblues.car.HasParkingRepository
 import dev.lammertsma.parkingblues.car.car.configureOsmdroid
+import dev.lammertsma.parkingblues.shared.AuthRepository
 import dev.lammertsma.parkingblues.shared.ParkingSessionRepository
 import dev.lammertsma.parkingblues.shared.api.ParkingApiClient
 
@@ -16,9 +17,19 @@ class ParkingBluesApp : Application(), HasParkingRepository {
     override lateinit var repository: ParkingSessionRepository
         private set
 
+    /** Optional Google sign-in. The app starts signed out (anonymous). The car
+     *  screens (Android Auto) run in this process and share this login. */
+    lateinit var auth: AuthRepository
+        private set
+
     override fun onCreate() {
         super.onCreate()
         configureOsmdroid(this)
-        repository = ParkingSessionRepository(ParkingApiClient())
+        val api = ParkingApiClient(
+            accessToken = { auth.accessToken() },
+            onUnauthorized = { auth.markAccessTokenRejected() },
+        )
+        auth = AuthRepository(api, SecureTokenStore(this)) { System.currentTimeMillis() / 1000 }
+        repository = ParkingSessionRepository(api)
     }
 }

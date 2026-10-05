@@ -35,6 +35,12 @@ The algorithm (candidate generation, DBSCAN clustering, scoring, retargeting hys
 * `SessionStore` expires idle sessions (2 h) and caps the total (5000). Clients treat the resulting 404 as "start a new session"; a `429` makes the Android repository pause live updates until `Retry-After` has passed.
 * **Gotcha:** `SessionStore` defines `__len__`, so an *empty* store is falsy. Never write `store or default`; compare with `is None`. The Flask-Limiter decorators hold only a weak reference to the limiter, so `create_app` keeps a strong one in `app.extensions`.
 
+### Optional sign-in (accounts)
+* Anonymous is the default. `backend/auth.py` (Google ID token verification, our own HS256 access JWTs, rotating hashed refresh tokens, `AccountStore` with in-memory and Firestore implementations, `AbuseGuard`) is wired into `backend/app.py`. It is **off unless `GOOGLE_WEB_CLIENT_ID` and `AUTH_JWT_SECRET` are set**, so a missing configuration means fully anonymous rather than broken. Setup: `deploy/auth-setup.md`.
+* The `before_request` authentication hook must be registered **before** the Flask-Limiter instance, because the limiter's key (account vs IP) depends on it.
+* The Android side: `AuthRepository` (shared) refreshes tokens without UI, so the car screens keep a valid token with the phone in a pocket; `SecureTokenStore` keeps it Keystore-encrypted and out of backups. Android Auto shares the phone app's login; the standalone Automotive OS app is anonymous until it gets a `SignInTemplate` flow.
+* Developer options (test location) live behind a long-press on the version in **About**, in every build; they are never in the normal menu.
+
 ### Algorithmic Decisions
 * **Clustering (`backend/clustering.py`):**
   * `DEFAULT_CLUSTER_EPS_M = 12.0`: Tight threshold to group continuous curb runs without chaining across street corners or intersections.

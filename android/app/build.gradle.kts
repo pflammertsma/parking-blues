@@ -20,6 +20,13 @@ android {
         targetSdk = 37
         versionCode = 1 * 1_000_000 + releaseNumber
         versionName = providers.gradleProperty("parkingblues.versionName").get()
+        // The OAuth *web* client id (audience of Google ID tokens). Empty hides
+        // the sign-in menu entry; see deploy/auth-setup.md.
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            "\"" + providers.gradleProperty("parkingblues.googleWebClientId").getOrElse("") + "\"",
+        )
     }
 
     buildTypes {
@@ -70,6 +77,9 @@ dependencies {
     implementation(project(":car"))
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

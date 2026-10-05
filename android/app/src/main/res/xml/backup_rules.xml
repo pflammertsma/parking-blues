@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older: keep the encrypted sign-in out of backups. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="parking_blues_auth.xml" />
+</full-backup-content>

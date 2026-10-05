@@ -6,7 +6,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,6 +36,7 @@ import org.osmdroid.util.GeoPoint
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -48,13 +51,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -77,6 +83,8 @@ import dev.lammertsma.parkingblues.car.location.locationUpdates
 import dev.lammertsma.parkingblues.car.location.setLastZone
 import dev.lammertsma.parkingblues.car.location.setTestLocationEnabled
 import dev.lammertsma.parkingblues.car.location.testModeFlow
+import dev.lammertsma.parkingblues.shared.AuthRepository
+import dev.lammertsma.parkingblues.shared.AuthState
 import dev.lammertsma.parkingblues.shared.ParkingSessionRepository
 import dev.lammertsma.parkingblues.shared.model.ParkedSpot
 import dev.lammertsma.parkingblues.shared.model.ZoneFilter
@@ -119,6 +127,7 @@ class MainActivity : ComponentActivity() {
     private val repository: ParkingSessionRepository by lazy {
         (application as ParkingBluesApp).repository
     }
+    private val auth: AuthRepository by lazy { (application as ParkingBluesApp).auth }
 
     private val requestLocationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -172,11 +181,45 @@ class MainActivity : ComponentActivity() {
             ParkingBluesTheme {
                 val testMode by testModeFlow.collectAsState()
                 val useTestLocation = testMode == true
-                AppScaffold(
+                var page by rememberSaveable { mutableStateOf(Page.Main) }
+                var developerUnlocked by remember { mutableStateOf(isDeveloperUnlocked(this@MainActivity)) }
+                BackHandler(enabled = page == Page.About) { page = Page.Main }
+                val authState by auth.state.collectAsState()
+                val authNotice by auth.notice.collectAsState()
+                LaunchedEffect(authNotice) {
+                    authNotice?.let {
+                        toast(it)
+                        auth.clearNotice()
+                    }
+                }
+                if (page == Page.About) {
+                    AboutScreen(
+                        versionLabel = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                        developerUnlocked = developerUnlocked,
+                        onUnlockDeveloper = {
+                            if (!developerUnlocked) toast("Developer options unlocked")
+                            developerUnlocked = true
+                            setDeveloperUnlocked(this@MainActivity, true)
+                        },
+                        onLockDeveloper = {
+                            developerUnlocked = false
+                            setDeveloperUnlocked(this@MainActivity, false)
+                        },
+                        useTestLocation = useTestLocation,
+                        onUseTestLocationChanged = { setUseTestLocation(it) },
+                        onOpenUrl = { url -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) },
+                        onBack = { page = Page.Main },
+                    )
+                } else AppScaffold(
+                    onAbout = { page = Page.About },
+                    authState = authState,
+                    signInAvailable = BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank(),
+                    onSignIn = { signIn() },
+                    onSignOut = { lifecycleScope.launch { auth.signOut() } },
+                    onDeleteAccount = { deleteAccount() },
                     spot = parkedSpot.value,
                     repository = repository,
                     currentZone = currentZone.value,
-                    useTestLocation = useTestLocation,
                     onGetDirections = { spot -> openDirections(spot) },
                     onFoundCar = { onFoundCar() },
                     userLocation = userLocation.value,
@@ -184,21 +227,6 @@ class MainActivity : ComponentActivity() {
                     onZoneSelected = { zone -> switchZone(zone) },
                     onSearchHere = { lat, lon -> searchHere(lat, lon) },
                     onRecenter = { recenter() },
-                    onUseTestLocationChanged = { enabled ->
-                        setTestLocationEnabled(this@MainActivity, enabled)
-                        browsing.value = false
-                        userLocation.value = null
-                        // The real-GPS path needs the permission; the
-                        // test-location path never queries GPS at all, so it
-                        // works before the user has granted (or even been
-                        // asked for) location permission.
-                        if (!enabled && !hasLocationPermission()) {
-                            requestLocationPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                        } else {
-                            startLocationUpdates()
-                            startSearch(currentZone.value)
-                        }
-                    },
                 )
             }
         }
@@ -229,6 +257,47 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         if (intent.getBooleanExtra(EXTRA_SHOW_PARKED, false)) {
             parkedSpot.value = loadParkedSpot(this)
+        }
+    }
+
+    private fun setUseTestLocation(enabled: Boolean) {
+        setTestLocationEnabled(this@MainActivity, enabled)
+        browsing.value = false
+        userLocation.value = null
+        // The real-GPS path needs the permission; the
+        // test-location path never queries GPS at all, so it
+        // works before the user has granted (or even been
+        // asked for) location permission.
+        if (!enabled && !hasLocationPermission()) {
+            requestLocationPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        } else {
+            startLocationUpdates()
+            startSearch(currentZone.value)
+        }
+    }
+
+    private fun toast(message: String) =
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+    /** Optional: the app works anonymously; signing in only raises the request limits. */
+    private fun signIn() {
+        lifecycleScope.launch {
+            val idToken = requestGoogleIdToken(this@MainActivity, BuildConfig.GOOGLE_WEB_CLIENT_ID)
+                .getOrElse { failure ->
+                    if (failure !is SignInCancelled) toast("Google sign-in failed: ${failure.message}")
+                    return@launch
+                }
+            auth.signIn(idToken)
+                .onSuccess { toast("Signed in as ${it.email}") }
+                .onFailure { toast(it.message ?: "Sign-in failed") }
+        }
+    }
+
+    private fun deleteAccount() {
+        lifecycleScope.launch {
+            auth.deleteAccount()
+                .onSuccess { toast("Your account was deleted") }
+                .onFailure { toast("Could not delete the account: ${it.message}") }
         }
     }
 
@@ -313,10 +382,14 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppScaffold(
+    authState: AuthState,
+    signInAvailable: Boolean,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+    onDeleteAccount: () -> Unit,
     spot: ParkedSpot?,
     repository: ParkingSessionRepository,
     currentZone: ZoneFilter,
-    useTestLocation: Boolean,
     userLocation: Pair<Double, Double>?,
     heading: Float?,
     onGetDirections: (ParkedSpot) -> Unit,
@@ -324,7 +397,7 @@ private fun AppScaffold(
     onZoneSelected: (ZoneFilter) -> Unit,
     onSearchHere: (Double, Double) -> Unit,
     onRecenter: () -> Unit,
-    onUseTestLocationChanged: (Boolean) -> Unit,
+    onAbout: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -339,6 +412,27 @@ private fun AppScaffold(
                     if (spot == null) {
                         var menuOpen by remember { mutableStateOf(false) }
                         var zonePage by remember { mutableStateOf(false) }
+                        var confirmDelete by remember { mutableStateOf(false) }
+                        if (confirmDelete) {
+                            AlertDialog(
+                                onDismissRequest = { confirmDelete = false },
+                                title = { Text("Delete account?") },
+                                text = {
+                                    Text(
+                                        "This permanently deletes your account and signs you out. " +
+                                            "Searching for parking never requires an account."
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = { confirmDelete = false; onDeleteAccount() }) {
+                                        Text("Delete")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+                                },
+                            )
+                        }
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(
                                 Icons.Default.MoreVert,
@@ -369,28 +463,52 @@ private fun AppScaffold(
                                     },
                                     onClick = { zonePage = true },
                                 )
-                                // Development switch: never shown in release builds.
-                                if (BuildConfig.DEBUG) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Column {
-                                                Text("Use test location")
-                                                Text(
-                                                    "Zurich, for development off-site",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                )
-                                            }
-                                        },
-                                        trailingIcon = {
-                                            Checkbox(checked = useTestLocation, onCheckedChange = null)
-                                        },
-                                        onClick = {
-                                            onUseTestLocationChanged(!useTestLocation)
-                                            menuOpen = false
-                                        },
-                                    )
+                                // Optional sign-in; hidden until a Google client id is configured.
+                                if (signInAvailable) {
+                                    val state = authState
+                                    if (state is AuthState.SignedIn) {
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(state.account.name.ifBlank { "Signed in" })
+                                                    Text(
+                                                        state.account.email,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            },
+                                            enabled = false,
+                                            onClick = {},
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Sign out") },
+                                            onClick = { menuOpen = false; onSignOut() },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Delete account\u2026") },
+                                            onClick = { menuOpen = false; confirmDelete = true },
+                                        )
+                                    } else {
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text("Sign in with Google")
+                                                    Text(
+                                                        "Optional: higher limits",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            },
+                                            onClick = { menuOpen = false; onSignIn() },
+                                        )
+                                    }
                                 }
+                                DropdownMenuItem(
+                                    text = { Text("About") },
+                                    onClick = { menuOpen = false; onAbout() },
+                                )
                             } else {
                                 DropdownMenuItem(
                                     text = { Text("Zones") },
@@ -618,3 +736,5 @@ private fun formatClockTime(epochMillis: Long): String =
     DateTimeFormatter.ofPattern("HH:mm")
         .withZone(ZoneId.systemDefault())
         .format(Instant.ofEpochMilli(epochMillis))
+
+private enum class Page { Main, About }

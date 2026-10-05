@@ -7,11 +7,20 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from .auth import (
+    ROLE_OWNER,
+    AbuseGuard,
+    Account,
+    AuthError,
+    AuthService,
+    Session,
+    auth_from_env,
+)
 from .blue_zone_rules import ZURICH_TZ, blue_zone_deadline
 from .fee_estimate import ESTIMATED_WHITE_ZONE_RATE_CHF_PER_HOUR
 from .parking_data import ALL_SEGMENTS
@@ -54,6 +63,13 @@ class RateLimits:
     position_per_ip: str = "1200 per minute"                # per IP ceiling
     session_calls: str = "60 per minute"                    # get/reject/confirm/expand, per IP
     default: str = "600 per minute"                         # everything else (static files), per IP
+    auth: str = "20 per minute;200 per day"                 # sign-in/refresh, per IP
+    # Signed-in callers are counted per account instead of per IP, and get
+    # more headroom: abuse can be traced to (and blocked on) an account.
+    create_session_account: str = "60 per minute;2000 per day"
+    position_per_account: str = "600 per minute"
+    session_calls_account: str = "240 per minute"
+    default_account: str = "1200 per minute"
     enabled: bool = True
 
 
@@ -75,7 +91,11 @@ def parse_coordinates(data: dict) -> tuple[float, float] | None:
     return lat, lon
 
 
-def create_app(store: SessionStore | None = None, rate_limits: RateLimits | None = None) -> Flask:
+def create_app(
+    store: SessionStore | None = None,
+    rate_limits: RateLimits | None = None,
+    auth: AuthService | None = None,
+) -> Flask:
     app = Flask(__name__, static_folder=WEB_DIR, static_url_path="")
     app.json.sort_keys = False
     app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BYTES
@@ -87,14 +107,53 @@ def create_app(store: SessionStore | None = None, rate_limits: RateLimits | None
     if store is None:
         store = SessionStore(ALL_SEGMENTS)
     limits = rate_limits if rate_limits is not None else RateLimits()
+    # Sign-in is optional and only active when configured (see auth_from_env);
+    # without it every caller is anonymous, exactly as before.
+    if auth is None:
+        auth = auth_from_env()
+    guard = AbuseGuard(auth) if auth is not None else None
+
+    # Must be registered before the limiter below: Flask runs before_request
+    # hooks in registration order, and the limiter's key depends on who is calling.
+    @app.before_request
+    def authenticate():
+        g.sub = None
+        g.role = None
+        header = request.headers.get("Authorization", "")
+        if not header.startswith("Bearer ") or request.path.startswith("/api/auth/"):
+            return None
+        if auth is None:
+            return None  # sign-in isn't configured; ignore any token
+        try:
+            claims = auth.tokens.verify_access(header[len("Bearer "):])
+        except AuthError as exc:
+            return jsonify(error=exc.message, code=exc.code), exc.status
+        account = auth.account(claims["sub"])
+        if account is None:
+            return jsonify(error="unknown account", code="invalid_token"), 401
+        if account.role != ROLE_OWNER and account.is_blocked(auth.clock()):
+            return jsonify(error="account blocked", code="account_blocked"), 403
+        g.sub = account.sub
+        g.role = account.role
+        return None
+
+    def client_key() -> str:
+        return f"acct:{g.sub}" if g.get("sub") else get_remote_address()
+
+    def is_owner() -> bool:
+        return g.get("role") == ROLE_OWNER
+
+    def tiered(anonymous: str, account: str):
+        return lambda: account if g.get("sub") else anonymous
 
     # In-memory counters are correct only while a single process serves the
     # API (Cloud Run is pinned to --max-instances=1 with one gunicorn
     # worker); switch to a shared store such as Redis before scaling out.
     limiter = Limiter(
-        key_func=get_remote_address,
+        key_func=client_key,
         app=app,
-        default_limits=[limits.default],
+        default_limits=[tiered(limits.default, limits.default_account)],
+        default_limits_exempt_when=is_owner,
         storage_uri="memory://",
         headers_enabled=True,
         enabled=limits.enabled,
@@ -110,7 +169,80 @@ def create_app(store: SessionStore | None = None, rate_limits: RateLimits | None
 
     @app.errorhandler(429)
     def too_many_requests(error):
+        # Repeated breaches by a signed-in account escalate to a block.
+        sub = g.get("sub")
+        if guard is not None and sub:
+            blocked = guard.record_violation(sub)
+            if blocked is not None:
+                return jsonify(error="account blocked", code="account_blocked"), 403
         return jsonify(error="rate limit exceeded", detail=str(error.description)), 429
+
+    def auth_json(session: Session) -> dict:
+        return {
+            "access_token": session.access_token,
+            "expires_in": session.expires_in,
+            "refresh_token": session.refresh_token,
+            "account": account_json(session.account),
+        }
+
+    def account_json(account: Account) -> dict:
+        return {"sub": account.sub, "email": account.email, "name": account.name, "role": account.role}
+
+    def auth_unavailable():
+        return jsonify(error="sign-in is not available", code="auth_unavailable"), 503
+
+    def string_field(name: str) -> str | None:
+        value = (request.get_json(silent=True) or {}).get(name)
+        return value if isinstance(value, str) and 0 < len(value) <= 4096 else None
+
+    @app.post("/api/auth/google")
+    @limiter.limit(limits.auth)
+    def auth_google():
+        if auth is None:
+            return auth_unavailable()
+        id_token = string_field("id_token")
+        if id_token is None:
+            return jsonify(error="id_token is required", code="bad_request"), 400
+        try:
+            return jsonify(auth_json(auth.sign_in_with_google(id_token)))
+        except AuthError as exc:
+            return jsonify(error=exc.message, code=exc.code), exc.status
+
+    @app.post("/api/auth/refresh")
+    @limiter.limit(limits.auth)
+    def auth_refresh():
+        if auth is None:
+            return auth_unavailable()
+        refresh_token = string_field("refresh_token")
+        if refresh_token is None:
+            return jsonify(error="refresh_token is required", code="bad_request"), 400
+        try:
+            return jsonify(auth_json(auth.refresh(refresh_token)))
+        except AuthError as exc:
+            return jsonify(error=exc.message, code=exc.code), exc.status
+
+    @app.post("/api/auth/logout")
+    @limiter.limit(limits.auth)
+    def auth_logout():
+        if auth is None:
+            return auth_unavailable()
+        refresh_token = string_field("refresh_token")
+        if refresh_token is not None:
+            auth.sign_out(refresh_token)
+        return "", 204
+
+    @app.get("/api/me")
+    def me():
+        if auth is None or not g.get("sub"):
+            return jsonify(error="sign in required", code="unauthenticated"), 401
+        return jsonify(account_json(auth.account(g.sub)))
+
+    @app.delete("/api/me")
+    def delete_me():
+        if auth is None or not g.get("sub"):
+            return jsonify(error="sign in required", code="unauthenticated"), 401
+        auth.delete_account(g.sub)
+        return "", 204
 
     @app.after_request
     def add_cors_headers(response):
@@ -121,8 +253,8 @@ def create_app(store: SessionStore | None = None, rate_limits: RateLimits | None
         origin = request.headers.get("Origin")
         if origin in ALLOWED_ORIGINS:
             response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
             response.headers["Access-Control-Expose-Headers"] = "Retry-After"
         return response
 
@@ -190,7 +322,7 @@ def create_app(store: SessionStore | None = None, rate_limits: RateLimits | None
         return app.send_static_file("index.html")
 
     @app.post("/api/session")
-    @limiter.limit(limits.create_session)
+    @limiter.limit(tiered(limits.create_session, limits.create_session_account), exempt_when=is_owner)
     def create_session():
         data = request.get_json(silent=True) or {}
         coordinates = parse_coordinates(data)
@@ -218,7 +350,7 @@ def create_app(store: SessionStore | None = None, rate_limits: RateLimits | None
         return jsonify(session_json(session, now)), 201
 
     @app.get("/api/session/<session_id>")
-    @limiter.limit(limits.session_calls)
+    @limiter.limit(tiered(limits.session_calls, limits.session_calls_account), exempt_when=is_owner)
     def get_session(session_id: str):
         session = store.get(session_id)
         if session is None:
@@ -226,8 +358,8 @@ def create_app(store: SessionStore | None = None, rate_limits: RateLimits | None
         return jsonify(session_json(session, datetime.now(ZURICH_TZ)))
 
     @app.post("/api/session/<session_id>/position")
-    @limiter.limit(limits.position_per_ip)
-    @limiter.limit(limits.position_per_session, key_func=session_key)
+    @limiter.limit(tiered(limits.position_per_ip, limits.position_per_account), exempt_when=is_owner)
+    @limiter.limit(limits.position_per_session, key_func=session_key, exempt_when=is_owner)
     def update_position(session_id: str):
         session = store.get(session_id)
         if session is None:
@@ -242,7 +374,7 @@ def create_app(store: SessionStore | None = None, rate_limits: RateLimits | None
         return jsonify(session_json(session, now, event=event))
 
     @app.post("/api/session/<session_id>/reject")
-    @limiter.limit(limits.session_calls)
+    @limiter.limit(tiered(limits.session_calls, limits.session_calls_account), exempt_when=is_owner)
     def reject(session_id: str):
         session = store.get(session_id)
         if session is None:
@@ -252,7 +384,7 @@ def create_app(store: SessionStore | None = None, rate_limits: RateLimits | None
         return jsonify(session_json(session, now, event=event))
 
     @app.post("/api/session/<session_id>/confirm")
-    @limiter.limit(limits.session_calls)
+    @limiter.limit(tiered(limits.session_calls, limits.session_calls_account), exempt_when=is_owner)
     def confirm(session_id: str):
         session = store.get(session_id)
         if session is None:
@@ -261,7 +393,7 @@ def create_app(store: SessionStore | None = None, rate_limits: RateLimits | None
         return jsonify(session_json(session, datetime.now(ZURICH_TZ), event=event))
 
     @app.post("/api/session/<session_id>/expand")
-    @limiter.limit(limits.session_calls)
+    @limiter.limit(tiered(limits.session_calls, limits.session_calls_account), exempt_when=is_owner)
     def expand(session_id: str):
         session = store.get(session_id)
         if session is None:

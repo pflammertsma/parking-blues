@@ -66,23 +66,17 @@ Done: per-IP limits on session creation, per-session limits on position updates 
 - [ ] Tighten CORS if more origins are not needed; add a Cloud Billing budget alert and a Cloud Run request-rate alert.
 - [ ] The web MVP shows the raw `rate limit exceeded` message; make it say how long to wait (read `Retry-After`).
 
-### Accounts and automatic abuse blocking (plan)
-1. **Identity: OAuth sign-in.**
-   - Android: Sign in with Google via Credential Manager. Web MVP: Google Identity Services. Later iOS: Sign in with Apple (Apple requires it when other third-party logins are offered).
-   - The client sends the Google ID token once; the backend verifies it against Google's public keys, then issues its own short-lived access token (JWT) plus a refresh token. Identify accounts by the stable Google `sub`, never by email alone.
-   - Anonymous use stays possible but gets the low rate limits; signed-in accounts get higher ones. This also makes login optional for casual users.
-   - Android Auto and Automotive OS: sign in on the phone (Android Auto shares the phone app's token); the standalone Automotive OS app needs the OAuth device flow (show a code or QR to finish on the phone).
-2. **Storage.** Sessions can stay in memory, but accounts, quotas and block status must persist: use Firestore (serverless, cheap) or Cloud SQL. This replaces the "single in-memory instance" assumption for anything account-related.
-3. **Per-account quotas.** Count requests, session creations and searched area per account over sliding windows, and enforce them in the API layer (extends the anonymous limiter, keyed by account id instead of IP).
-4. **Abuse detection.** Flag accounts that exceed quotas repeatedly, scrape (systematic coverage of the whole city, very high search volume, no movement), or send impossible movement (teleporting positions, speeds above 70 m/s).
-5. **Automatic blocking with escalation:** warn and throttle, then temporary block (hours), then permanent block; log the reason and evidence; automatic unblock for temporary blocks.
-6. **Allowlist.** Your own accounts (by Google `sub`, configured as an environment variable or secret, not hard-coded) are exempt from limits and auto-blocking. Keep an emergency kill switch and an admin way to list, unblock and permanently block accounts.
-7. **Hardening on top:** Play Integrity API so only genuine builds of the app can call the API anonymously (and reject rooted or emulated clients where it matters); alert on spikes.
-8. **Compliance for accounts:**
-   - Account deletion in-app and a web deletion page (Play requirement once accounts can be created in the app).
-   - Minimal data (sub, email, status, counters); short retention for IP-derived data.
-   - Update the privacy policy, terms and Data safety form for sign-in.
-   - Tell users why an account is blocked and how to appeal by email.
+### Accounts and automatic abuse blocking
+Built (optional Google sign-in, see `backend/auth.py`, `AuthRepository.kt` and `deploy/auth-setup.md`): anonymous use stays the default and sign-in is in the menu; backend verifies the Google ID token and issues a 15-minute access token plus a rotating 30-day refresh token (hashes stored in Firestore, Zurich); tiered limits per account instead of per IP; escalating automatic blocks (1 h, 1 day, 1 week, permanent) after repeated rate-limit breaches; owner accounts exempt via `OWNER_SUBS`; delete-account endpoint and menu item; tokens encrypted on the device with the Keystore and excluded from backups.
+- [ ] **Do the Google Cloud and GitHub setup** in `deploy/auth-setup.md` (OAuth consent screen, 4 client IDs, Firestore, secret, repository variables). Nothing works end to end until this is done.
+- [ ] **Try a real sign-in** on a phone (debug, release and a Play internal-track install each need their own Android client ID), then set `OWNER_SUBS` to your own account.
+- [ ] **Standalone Automotive OS app:** it has no phone to share a login with, so it stays anonymous for now. Add sign-in with Car App Library's `SignInTemplate` (QR code or on-car Google account) using the same `AuthRepository`. Android Auto needs nothing: it runs inside the phone app and uses its login.
+- [ ] Web MVP stays anonymous; add Google Identity Services sign-in there if wanted (needs its own web client origin).
+- [ ] **Abuse detection beyond rate limits:** flag scraping patterns (systematic coverage of the whole city, very high search volume without movement) and impossible movement (teleporting positions); decay strikes after a long good period; an admin way to list, unblock and permanently block accounts without editing Firestore by hand.
+- [ ] Delete expired refresh tokens (they are stored with a numeric expiry, so Firestore's TTL feature cannot do it): a small scheduled cleanup, or store `expires_at` as a timestamp and add a TTL policy.
+- [ ] Play Integrity API so only genuine builds of the app can call the API anonymously.
+- [ ] Play Console: update the Data safety form (email, name, identifiers) and use the privacy page's `#delete-account` anchor as the account-deletion URL.
+- [ ] Sign-in UX polish: show the account in the About screen; offer sign-in again after a "Please sign in again" notice.
 
 ## Car (Android Auto / Automotive OS)
 - [ ] Confirm on the DHU that the icon-only Recenter button and the debug-only ⋮ button fit the action strip, and that Developer options and the test-location toggle work.

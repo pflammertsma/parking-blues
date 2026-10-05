@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: the sign-in (and the Keystore key that protects it) must not
+     move to another phone through cloud backup or device transfer. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="parking_blues_auth.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="parking_blues_auth.xml" />
+    </device-transfer>
+</data-extraction-rules>

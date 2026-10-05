@@ -15,7 +15,7 @@
 
   <main class="legal">
     <h2>Privacy Policy</h2>
-    <p class="meta">Last updated: 5 October 2026</p>
+    <p class="meta">Last updated: 6 October 2026</p>
 
     <p>
       Parking Blues helps drivers find legal on-street parking in Zurich. This policy
@@ -32,7 +32,7 @@
 
     <h3>In short</h3>
     <ul>
-      <li>There are <strong>no accounts, no ads and no analytics or tracking</strong>.</li>
+      <li>There are <strong>no ads and no analytics or tracking</strong>. Signing in with Google is <strong>optional</strong>; the app works without it.</li>
       <li>Your location is used only while you use the app, to find parking near you.</li>
       <li>The server keeps your search only in memory, and deletes it after at most two hours without activity.</li>
       <li>Where you parked is stored <strong>on your device only</strong>.</li>
@@ -59,6 +59,31 @@
       email address or device identifier. It is not written to a database. A search is
       deleted after at most two hours without activity, and also whenever the server
       restarts.
+    </p>
+
+    <h4 id="accounts">Signing in (optional)</h4>
+    <p>
+      You can sign in with your Google account from the app's menu. Signing in is never
+      required. If you do, we store your Google account identifier, email address and name,
+      when you joined and last used the service, and whether the account is in good
+      standing or blocked (see the terms). We use this only to count and limit requests
+      per account and to stop abuse, not to identify you in any other way and not for
+      advertising. Your password is never shared with us; Google tells us who you are.
+      Your signed-in requests are linked to your account while you use the service, but
+      your searched locations are still not stored beyond the in-memory session described
+      above.
+    </p>
+    <p>
+      This account data is stored in Google Cloud Firestore in Zurich, Switzerland. Sign-in
+      tokens are stored on the server only as hashes and in the app encrypted with a key
+      protected by your device. They are excluded from device backups.
+    </p>
+    <p id="delete-account">
+      <strong>Deleting your account:</strong> choose "Delete account" in the app's menu
+      while signed in, or write to <a href="mailto:paul@lammertsma.dev">paul@lammertsma.dev</a>
+      from the email address of the account and we will delete it. Deleting an account removes
+      its stored data and signs you out everywhere. If an account was blocked for abuse, we may keep a
+      minimal record of the block for as long as needed to enforce it.
     </p>
 
     <h4>Technical data in server logs</h4>
@@ -101,8 +126,13 @@
         <a href="https://policies.google.com/privacy" rel="noopener">policies.google.com/privacy</a>.
       </li>
       <li>
-        <strong>Google Cloud and Firebase Hosting</strong> host the server and this web page
-        and may log requests as described above.
+        <strong>Google (sign-in).</strong> If you choose to sign in, Google handles the
+        sign-in and tells us your account identifier, email address and name. Google's
+        privacy terms apply to that.
+      </li>
+      <li>
+        <strong>Google Cloud and Firebase Hosting</strong> host the server, the account
+        database and this web page and may log requests as described above.
       </li>
       <li>
         <strong>Leaflet (unpkg.com).</strong> This web page loads the Leaflet map library
@@ -130,22 +160,23 @@
         <tr><td>Search and live position</td><td>Server memory</td><td>Up to 2 hours after last activity; lost on restart</td></tr>
         <tr><td>Rate-limit counters (IP address)</td><td>Server memory</td><td>Minutes to one day</td></tr>
         <tr><td>Server logs (IP, time, request, status)</td><td>Google Cloud Logging</td><td>About 30 days</td></tr>
+        <tr><td>Account (identifier, email, name, status), only if you sign in</td><td>Firestore, Zurich</td><td>Until you delete the account</td></tr>
         <tr><td>Last zone, parked spot</td><td>Your device</td><td>Until you clear it or uninstall</td></tr>
       </tbody>
     </table>
 
     <h3>Where data is processed</h3>
     <p>
-      The server runs in Google Cloud's Belgium region (europe-west1). Your data can
-      therefore be processed outside Switzerland. Google is bound by its own data protection
+      The server runs in Google Cloud's Belgium region (europe-west1) and the account
+      database in Zurich. Your data can therefore be processed outside Switzerland. Google is bound by its own data protection
       commitments for the safeguards that apply.
     </p>
 
     <h3>Why, and on what basis</h3>
     <p>
       We process location because you ask the app to find parking near you (with your
-      permission), and technical data because we have a legitimate interest in running
-      and protecting the service. This policy follows the Swiss Federal Act on Data
+      permission), account data because you choose to sign in, and technical data because
+      we have a legitimate interest in running and protecting the service. This policy follows the Swiss Federal Act on Data
       Protection and, for users in the EU, the GDPR.
     </p>
 
@@ -153,9 +184,9 @@
     <p>
       You can ask what data we hold about you, to have it corrected or deleted, or object to
       its processing, by writing to <a href="mailto:paul@lammertsma.dev">paul@lammertsma.dev</a>.
-      Because we do not have accounts and a search is linked only to a random identifier, we
-      can usually only find data if you tell us roughly when you used the service and from
-      which IP address. You can also complain to the Swiss Federal Data Protection and
+      If you signed in, we can find your data through your account. Searches themselves are
+      linked only to a random identifier, so for those we can usually only find data if you
+      tell us roughly when you used the service and from which IP address. You can also complain to the Swiss Federal Data Protection and
       Information Commissioner (FDPIC) or to your local data protection authority.
     </p>
 
@@ -173,8 +204,7 @@
 
     <h3>Changes</h3>
     <p>
-      We may update this policy, for example if the app starts to use new features such as
-      accounts. The date at the top shows when it last changed, and material changes will be
+      We may update this policy, for example if the app starts to use new features. The date at the top shows when it last changed, and material changes will be
       announced in the app or its store listing before they apply.
     </p>
 
