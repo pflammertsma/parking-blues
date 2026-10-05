@@ -4,16 +4,23 @@ const DEFAULT_ORIGIN = { lat: 47.379198, lon: 8.531307 };
 
 const $ = (id) => document.getElementById(id);
 
+// When this page is served as static files from lammertsma.dev (e.g.
+// /projects/parking-blues/), the Flask API isn't on the same origin --
+// it's reached via api.parking-blues.lammertsma.dev instead (see README
+// section 11). Anywhere else (this app's own Cloud Run domain, or local
+// dev via `python -m backend.app`), the API is same-origin as usual.
+const API_BASE = window.location.hostname.endsWith("lammertsma.dev")
+  ? "https://api.parking-blues.lammertsma.dev"
+  : "";
+
 const map = L.map("map").setView([DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lon], 16);
 // CartoDB's "Positron" basemap: a light, minimal OSM-derived style that
 // keeps streets/labels/buildings/rail but drops the POI icon clutter
-// (restaurants, shops, etc.) of the default OSM tiles. CARTO started
-// requiring a (free) API key for this on 2026-08-28 -- anonymous requests
-// now come back watermarked "API KEY REQUIRED" instead of erroring, so a
-// missing/invalid key fails visually rather than loudly.
-const CARTO_API_KEY = "cb1_40s3_1_3dff2462a8c5ca48a8208963";
+// (restaurants, shops, etc.) of the default OSM tiles. CARTO requires an API
+// key, which must not ship in a public page, so tiles come through our own
+// server (backend/tiles.py), which adds the key.
 L.tileLayer(
-  `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${CARTO_API_KEY}`,
+  `${API_BASE}/api/tiles/light_all/{z}/{x}/{y}{r}.png`,
   {
     attribution:
       "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors &copy; <a href=\"https://carto.com/attributions\">CARTO</a>",
@@ -166,15 +173,6 @@ function render(data) {
   }
   $("alternatives").hidden = data.upcoming.length === 0;
 }
-
-// When this page is served as static files from lammertsma.dev (e.g.
-// /projects/parking-blues/), the Flask API isn't on the same origin --
-// it's reached via api.parking-blues.lammertsma.dev instead (see README
-// section 11). Anywhere else (this app's own Cloud Run domain, or local
-// dev via `python -m backend.app`), the API is same-origin as usual.
-const API_BASE = window.location.hostname.endsWith("lammertsma.dev")
-  ? "https://api.parking-blues.lammertsma.dev"
-  : "";
 
 async function api(path, options = {}) {
   const send = (token) =>

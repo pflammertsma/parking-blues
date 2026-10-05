@@ -27,6 +27,7 @@ from .parking_data import ALL_SEGMENTS
 from .geo import haversine_m
 from .models import ParkingSegment, ZoneType
 from .session import ParkingSession, SessionStore
+from .tiles import TileError, TileProxy
 
 ZONE_FILTERS: dict[str, set[ZoneType]] = {
     "blue": {ZoneType.BLUE},
@@ -64,6 +65,7 @@ class RateLimits:
     session_calls: str = "60 per minute"                    # get/reject/confirm/expand, per IP
     default: str = "600 per minute"                         # everything else (static files), per IP
     auth: str = "20 per minute;200 per day"                 # sign-in/refresh, per IP
+    tiles: str = "3000 per minute"                          # map tiles, per IP (a pan loads dozens)
     # Signed-in callers are counted per account instead of per IP, and get
     # more headroom: abuse can be traced to (and blocked on) an account.
     create_session_account: str = "60 per minute;2000 per day"
@@ -95,6 +97,7 @@ def create_app(
     store: SessionStore | None = None,
     rate_limits: RateLimits | None = None,
     auth: AuthService | None = None,
+    tiles: TileProxy | None = None,
 ) -> Flask:
     app = Flask(__name__, static_folder=WEB_DIR, static_url_path="")
     app.json.sort_keys = False
@@ -112,6 +115,8 @@ def create_app(
     if auth is None:
         auth = auth_from_env()
     guard = AbuseGuard(auth) if auth is not None else None
+    if tiles is None:
+        tiles = TileProxy.from_env()
 
     # Must be registered before the limiter below: Flask runs before_request
     # hooks in registration order, and the limiter's key depends on who is calling.
@@ -316,6 +321,21 @@ def create_app(
         if event is not None:
             body["event"] = event
         return body
+
+    # Map tiles for the web page and the Android map, so CARTO's API key never
+    # ships to a client. <img>/osmdroid requests carry no Authorization header,
+    # so this is limited per IP only.
+    @app.get("/api/tiles/<style>/<int:z>/<int:x>/<int:y>.png", defaults={"retina": False})
+    @app.get("/api/tiles/<style>/<int:z>/<int:x>/<int:y>@2x.png", defaults={"retina": True})
+    @limiter.limit(limits.tiles)
+    def map_tile(style, z, x, y, retina):
+        try:
+            tile = tiles.get(style, z, x, y, retina)
+        except TileError as exc:
+            return "", exc.status
+        response = app.response_class(tile.body, mimetype=tile.content_type)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
 
     @app.get("/")
     def index():

@@ -37,11 +37,14 @@ jobs:
           GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID }}
           OWNER_SUBS: ${{ secrets.OWNER_SUBS }}
         run: |
+          # CARTO's API key for the map tile proxy (backend/tiles.py) comes from Secret
+          # Manager (secret parking-blues-carto-key) and is mounted on every deploy.
+          SECRETS="CARTO_API_KEY=parking-blues-carto-key:latest"
           SIGN_IN_FLAGS=()
           if [ -n "$GOOGLE_WEB_CLIENT_ID" ]; then
+            SECRETS="${SECRETS},AUTH_JWT_SECRET=parking-blues-jwt-secret:latest"
             SIGN_IN_FLAGS+=(
               --update-env-vars "^@^GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}@AUTH_STORE=firestore@GOOGLE_CLOUD_PROJECT=parking-blues-mvp@OWNER_SUBS=${OWNER_SUBS}"
-              --update-secrets "AUTH_JWT_SECRET=parking-blues-jwt-secret:latest"
             )
           fi
           gcloud run deploy parking-blues \
@@ -50,4 +53,5 @@ jobs:
             --region europe-west1 \
             --allow-unauthenticated \
             --max-instances=1 \
+            --update-secrets "$SECRETS" \
             "${SIGN_IN_FLAGS[@]}"

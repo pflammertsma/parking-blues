@@ -1,6 +1,7 @@
 package dev.lammertsma.parkingblues.car.car
 
 import android.content.Context
+import dev.lammertsma.parkingblues.shared.api.DEFAULT_BASE_URL
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.XYTileSource
 
@@ -27,10 +28,10 @@ fun configureOsmdroid(context: Context) {
  * web MVP, and replaces MapSearchScreen's old map_style.json hack, which
  * was a Google-Maps-specific JSON styling mechanism with no osmdroid
  * equivalent -- moot anyway now that Positron is already decluttered.
- * CARTO started requiring a (free) API key for this on 2026-08-28; same
- * key as web/app.js uses.
+ * CARTO requires an API key, which must not ship in a public repository or an
+ * APK, so tiles are fetched through our own server (backend/tiles.py), which
+ * adds the key. web/app.js does the same.
  */
-private const val CARTO_API_KEY = "cb1_40s3_1_3dff2462a8c5ca48a8208963"
 
 // Standard resolution, same as web/app.js's tiles -- tried @2x (retina)
 // tiles with tileSizePixels=512 for sharper text, but that shifts
@@ -47,12 +48,7 @@ val positronTileSource: XYTileSource = XYTileSource(
     0,
     19,
     256,
-    ".png?key=$CARTO_API_KEY",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/light_all/",
-        "https://b.basemaps.cartocdn.com/light_all/",
-        "https://c.basemaps.cartocdn.com/light_all/",
-        "https://d.basemaps.cartocdn.com/light_all/",
-    ),
+    ".png",
+    arrayOf("$DEFAULT_BASE_URL/api/tiles/light_all/"),
     "© OpenStreetMap contributors © CARTO",
 )
