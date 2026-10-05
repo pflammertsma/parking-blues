@@ -186,17 +186,251 @@ const API_BASE = window.location.hostname.endsWith("lammertsma.dev")
   ? "https://api.parking-blues.lammertsma.dev"
   : "";
 
-async function api(path, options) {
-  const response = await fetch(API_BASE + path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  const data = await response.json();
+async function api(path, options = {}) {
+  const send = (token) =>
+    fetch(API_BASE + path, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+  const token = await currentAccessToken();
+  let response = await send(token);
+  if (response.status === 401 && token) {
+    // The server rejected our access token: renew it once, or carry on anonymously.
+    response = await send(await refreshAccessToken());
+  }
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 429) {
+      const wait = response.headers.get("Retry-After");
+      throw new Error(`Too many requests, try again${wait ? ` in ${wait} s` : " shortly"}.`);
+    }
     throw new Error(data.error || `request to ${path} failed`);
   }
   return data;
 }
+
+// --- Optional Google sign-in -------------------------------------------------
+// Anonymous use is the default and always works. Signing in only raises request
+// limits. The OAuth *web* client ID is public by design (it is in every sign-in
+// page's source); the Google script itself is loaded only when the visitor
+// opens the sign-in panel, so merely browsing contacts nobody extra. Leave the
+// ID empty to hide sign-in. Setup: deploy/auth-setup.md.
+const GOOGLE_WEB_CLIENT_ID =
+  "794638973209-r1ukb3sac08eeomf4kjve5aj8bkbga52.apps.googleusercontent.com";
+const AUTH_STORAGE_KEY = "parking-blues-auth";
+const ACCESS_TOKEN_MARGIN_MS = 60 * 1000;
+
+// { refreshToken, account } persists across visits; the short-lived access
+// token lives only in memory and is re-issued from the refresh token.
+let auth = readStoredAuth();
+let accessToken = null;
+let accessTokenExpiresAt = 0;
+let refreshInFlight = null;
+
+function readStoredAuth() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY));
+    return stored && stored.refreshToken && stored.account ? stored : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeStoredAuth() {
+  try {
+    if (auth) {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
+    } else {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  } catch (e) {
+    // Storage blocked: sign-in still works for this page view.
+  }
+}
+
+function setAuth(session) {
+  auth = { refreshToken: session.refresh_token, account: session.account };
+  accessToken = session.access_token;
+  accessTokenExpiresAt = Date.now() + session.expires_in * 1000;
+  writeStoredAuth();
+  renderAccount();
+}
+
+function clearAuth() {
+  auth = null;
+  accessToken = null;
+  accessTokenExpiresAt = 0;
+  writeStoredAuth();
+  renderAccount();
+}
+
+async function authPost(path, body) {
+  const response = await fetch(API_BASE + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || `sign-in failed (${response.status})`);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+// Exchanges the refresh token for a new access token. Resolves to the token, or
+// null when signed out or offline. Only a *rejected* refresh token signs the
+// visitor out; a network failure keeps them signed in to retry later.
+function refreshAccessToken() {
+  if (!auth) return Promise.resolve(null);
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      let used = auth.refreshToken;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          setAuth(await authPost("/api/auth/refresh", { refresh_token: used }));
+          return accessToken;
+        } catch (e) {
+          if (e.status !== 401 && e.status !== 403) return null; // offline: stay signed in
+          // Refresh tokens rotate: another tab may have just used this one. If so,
+          // retry once with the newer token it stored instead of signing out.
+          const stored = readStoredAuth();
+          if (attempt === 0 && stored && stored.refreshToken !== used) {
+            auth = stored;
+            accessToken = null;
+            used = stored.refreshToken;
+            continue;
+          }
+          clearAuth();
+          return null;
+        }
+      }
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+async function currentAccessToken() {
+  if (!auth) return null;
+  if (accessToken && Date.now() < accessTokenExpiresAt - ACCESS_TOKEN_MARGIN_MS) {
+    return accessToken;
+  }
+  return refreshAccessToken();
+}
+
+let googleScript = null;
+function loadGoogleScript() {
+  if (!googleScript) {
+    googleScript = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = () => {
+        googleScript = null;
+        reject(new Error("Could not load Google sign-in."));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return googleScript;
+}
+
+let googleButtonReady = false;
+async function prepareGoogleButton() {
+  const errorEl = $("signin-error");
+  errorEl.hidden = true;
+  if (googleButtonReady) return;
+  try {
+    await loadGoogleScript();
+  } catch (e) {
+    errorEl.textContent = e.message;
+    errorEl.hidden = false;
+    return;
+  }
+  google.accounts.id.initialize({
+    client_id: GOOGLE_WEB_CLIENT_ID,
+    callback: async ({ credential }) => {
+      errorEl.hidden = true;
+      try {
+        setAuth(await authPost("/api/auth/google", { id_token: credential }));
+        setAccountPanelOpen(false);
+      } catch (e) {
+        errorEl.textContent = e.message;
+        errorEl.hidden = false;
+      }
+    },
+  });
+  google.accounts.id.renderButton($("google-button"), {
+    type: "standard",
+    theme: "outline",
+    size: "large",
+    text: "signin_with",
+  });
+  googleButtonReady = true;
+}
+
+function setAccountPanelOpen(open) {
+  $("account-panel").hidden = !open;
+  $("account-btn").setAttribute("aria-expanded", String(open));
+  if (open && !auth) prepareGoogleButton();
+}
+
+function renderAccount() {
+  if (!GOOGLE_WEB_CLIENT_ID) return;
+  $("account").hidden = false;
+  $("signed-out").hidden = !!auth;
+  $("signed-in").hidden = !auth;
+  $("account-btn").textContent = auth ? auth.account.name || auth.account.email || "Account" : "Sign in";
+  if (auth) {
+    $("account-name").textContent = auth.account.name || auth.account.email;
+    $("account-email").textContent = auth.account.name ? auth.account.email : "";
+  }
+}
+
+$("account-btn").addEventListener("click", () => setAccountPanelOpen($("account-panel").hidden));
+document.addEventListener("click", (event) => {
+  if (!$("account").contains(event.target)) setAccountPanelOpen(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setAccountPanelOpen(false);
+});
+
+$("sign-out").addEventListener("click", async () => {
+  const refreshToken = auth && auth.refreshToken;
+  clearAuth();
+  setAccountPanelOpen(false);
+  if (window.google && google.accounts) google.accounts.id.disableAutoSelect();
+  if (refreshToken) {
+    try {
+      await authPost("/api/auth/logout", { refresh_token: refreshToken });
+    } catch (e) {
+      // Already signed out here; the server-side token just expires on its own.
+    }
+  }
+});
+
+$("delete-account").addEventListener("click", async () => {
+  if (!window.confirm("Delete your Parking Blues account and its stored data? This cannot be undone.")) return;
+  try {
+    await api("/api/me", { method: "DELETE" });
+    clearAuth();
+    setAccountPanelOpen(false);
+  } catch (e) {
+    window.alert(`Could not delete the account: ${e.message}`);
+  }
+});
+
+renderAccount();
+if (auth) refreshAccessToken();
 
 $("use-geolocation").addEventListener("click", () => {
   if (!navigator.geolocation) {

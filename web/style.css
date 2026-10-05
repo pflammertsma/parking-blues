@@ -110,6 +110,48 @@ body {
   padding: 0.35rem 0.7rem;
 }
 
+.account {
+  position: relative;
+}
+
+#account-btn {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 1000; /* above the Leaflet panes */
+  min-width: 15rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.account-panel p {
+  margin: 0 0 0.5rem;
+}
+
+.account-panel .account-name {
+  font-weight: 600;
+}
+
+.account-panel button {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+}
+
+.account-panel .danger {
+  color: #c62828;
+}
+
 .hint {
   color: var(--muted-fg);
   font-size: 0.9rem;

@@ -34,7 +34,7 @@ Console: **APIs & Services → Credentials → Create credentials → OAuth clie
 
 | # | Type | Name | Settings |
 |---|------|------|----------|
-| 1 | **Web application** | `Parking Blues backend` | No redirect URIs. **This client ID is the one the app and the server use.** |
+| 1 | **Web application** | `Parking Blues backend` | No redirect URIs. **Authorized JavaScript origins:** `https://lammertsma.dev` (the web page's sign-in button; add `http://localhost:5000` to try it locally). **This client ID is the one the app, the web page and the server use.** |
 | 2 | Android | `Parking Blues debug` | Package `dev.lammertsma.parkingblues.debug`, SHA-1 `D0:74:11:F5:B5:5E:C0:3F:5F:84:C6:DC:7C:61:79:6B:D3:2B:CB:4B` |
 | 3 | Android | `Parking Blues release (upload key)` | Package `dev.lammertsma.parkingblues`, SHA-1 `B8:93:BC:BC:C5:1F:93:FF:1B:AD:8D:1D:EC:C8:07:20:DD:03:47:80` |
 | 4 | Android | `Parking Blues Play signing key` | Package `dev.lammertsma.parkingblues`, SHA-1 `AC:30:A2:4D:C1:F0:48:3C:6D:9D:91:20:E9:21:21:95:6F:E1:00:7B` (the **App signing key** that Play re-signs installs with; **not** the *Upload key certificate* on the same page, which is row 3). Find it under **Play Console → Protected with Play → App signing**, behind the *SHA-1 certificate fingerprint* button. |
@@ -122,7 +122,8 @@ curl -s -X POST https://api.parking-blues.lammertsma.dev/api/auth/google \
 ```
 
 Then sign in on a phone: the menu shows your name and email with *Sign out* and
-*Delete account*.
+*Delete account*. On the web page the **Sign in** button in the top bar does the same
+(its client ID is the `GOOGLE_WEB_CLIENT_ID` constant in `web/app.js`; it is public).
 
 ## Troubleshooting
 
@@ -130,6 +131,7 @@ Then sign in on a phone: the menu shows your name and email with *Sign out* and
 |---------|--------------|
 | `28444` / "Developer console is not set up correctly" | Missing Android client for this package + signing certificate (step 3, rows 2 to 4) |
 | "No credentials available" | No Google account on the device, or an old Play services |
+| Web page: Google button says *Error 400: origin_mismatch* / is blank | `https://lammertsma.dev` is missing from client #1's *Authorized JavaScript origins* (step 3); changes can take a few minutes |
 | Server: `invalid_google_token` | The app used a different web client ID than the server (they must match client #1) |
 | Server: `503 auth_unavailable` | `GOOGLE_WEB_CLIENT_ID` / `AUTH_JWT_SECRET` not set on Cloud Run |
 | Sign-in works for you but not other people | The consent screen is still in *Testing* (step 2) |

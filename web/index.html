@@ -11,6 +11,22 @@
   <header class="topbar">
     <h1>Parking Blues</h1>
     <div class="topbar-actions">
+      <div class="account" id="account" hidden>
+        <button type="button" id="account-btn" class="reset-btn" aria-haspopup="true" aria-expanded="false">Sign in</button>
+        <div class="account-panel" id="account-panel" hidden>
+          <div id="signed-out">
+            <p class="hint">Signing in is optional. It raises your request limits.</p>
+            <div id="google-button"></div>
+            <p class="hint" id="signin-error" role="alert" hidden></p>
+          </div>
+          <div id="signed-in" hidden>
+            <p class="account-name" id="account-name"></p>
+            <p class="hint" id="account-email"></p>
+            <button type="button" id="sign-out">Sign out</button>
+            <button type="button" id="delete-account" class="danger">Delete account</button>
+          </div>
+        </div>
+      </div>
       <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Theme">
         <button type="button" data-theme="light" title="Light theme" aria-label="Light theme">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8L6 18M18 6l1.8-1.8" /></svg>

@@ -64,7 +64,7 @@ Done: per-IP limits on session creation, per-session limits on position updates 
 - [ ] Check what Cloud Run actually sends in `X-Forwarded-For` for the `api.parking-blues.lammertsma.dev` domain mapping so the limiter sees the real client IP (the code trusts exactly one hop).
 - [ ] Confirm gunicorn runs a single worker on Cloud Run: the in-memory counters are per process. Move counters (and sessions) to Redis/Firestore before scaling past one instance or worker.
 - [ ] Tighten CORS if more origins are not needed; add a Cloud Billing budget alert and a Cloud Run request-rate alert.
-- [ ] The web MVP shows the raw `rate limit exceeded` message; make it say how long to wait (read `Retry-After`).
+- [x] The web MVP now says how long to wait after a 429 (reads `Retry-After`).
 
 ### Accounts and automatic abuse blocking
 Built (optional Google sign-in, see `backend/auth.py`, `AuthRepository.kt` and `deploy/auth-setup.md`): anonymous use stays the default and sign-in is in the menu; backend verifies the Google ID token and issues a 15-minute access token plus a rotating 30-day refresh token (hashes stored in Firestore, Zurich); tiered limits per account instead of per IP; escalating automatic blocks (1 h, 1 day, 1 week, permanent) after repeated rate-limit breaches; owner accounts exempt via `OWNER_SUBS`; delete-account endpoint and menu item; tokens encrypted on the device with the Keystore and excluded from backups.
@@ -73,7 +73,7 @@ Built (optional Google sign-in, see `backend/auth.py`, `AuthRepository.kt` and `
 - [ ] **Set the `OWNER_SUBS` GitHub secret** to your own account id and redeploy, then confirm the role shows `owner` in Firestore.
 - [ ] Try a sign-in from a release build and from a Play internal-track install (each has its own Android client).
 - [ ] **Standalone Automotive OS app:** it has no phone to share a login with, so it stays anonymous for now. Add sign-in with Car App Library's `SignInTemplate` (QR code or on-car Google account) using the same `AuthRepository`. Android Auto needs nothing: it runs inside the phone app and uses its login.
-- [ ] Web MVP stays anonymous; add Google Identity Services sign-in there if wanted (needs its own web client origin).
+- [x] Web MVP has optional Google sign-in (Google Identity Services, the same web client ID). It needs `https://lammertsma.dev` under that client's *Authorized JavaScript origins* (`deploy/auth-setup.md` step 3).
 - [ ] **Abuse detection beyond rate limits:** flag scraping patterns (systematic coverage of the whole city, very high search volume without movement) and impossible movement (teleporting positions); decay strikes after a long good period; an admin way to list, unblock and permanently block accounts without editing Firestore by hand.
 - [ ] Delete expired refresh tokens (they are stored with a numeric expiry, so Firestore's TTL feature cannot do it): a small scheduled cleanup, or store `expires_at` as a timestamp and add a TTL policy.
 - [ ] Play Integrity API so only genuine builds of the app can call the API anonymously.
