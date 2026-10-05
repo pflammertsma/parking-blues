@@ -28,6 +28,7 @@ import dev.lammertsma.parkingblues.car.car.positronTileSource
 import dev.lammertsma.parkingblues.shared.ParkingSessionRepository
 import dev.lammertsma.parkingblues.shared.model.SessionSnapshot
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
@@ -80,6 +81,8 @@ fun ParkingMapView(
             minZoomLevel = 13.0
             maxZoomLevel = 20.0
             controller.setZoom(16.0)
+            // Pinch to zoom; the stock square -/+ buttons clash with the Material UI.
+            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
 
             addMapListener(object : MapListener {
                 override fun onScroll(event: ScrollEvent?): Boolean {

@@ -25,7 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.ElevatedButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
@@ -331,8 +331,9 @@ private fun AppScaffold(
             TopAppBar(
                 title = { Text(if (spot != null) "You parked here" else "Parking Blues") },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                    containerColor = appBarContainerColor(),
+                    titleContentColor = appBarContentColor(),
+                    actionIconContentColor = appBarContentColor(),
                 ),
                 actions = {
                     if (spot == null) {
@@ -342,7 +343,6 @@ private fun AppScaffold(
                             Icon(
                                 Icons.Default.MoreVert,
                                 contentDescription = "More options",
-                                tint = MaterialTheme.colorScheme.onPrimary,
                             )
                         }
                         // Compose's DropdownMenu has no native submenu, so
@@ -369,25 +369,28 @@ private fun AppScaffold(
                                     },
                                     onClick = { zonePage = true },
                                 )
-                                DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text("Use test location")
-                                            Text(
-                                                "Zurich, for development off-site",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                    },
-                                    trailingIcon = {
-                                        Checkbox(checked = useTestLocation, onCheckedChange = null)
-                                    },
-                                    onClick = {
-                                        onUseTestLocationChanged(!useTestLocation)
-                                        menuOpen = false
-                                    },
-                                )
+                                // Development switch: never shown in release builds.
+                                if (BuildConfig.DEBUG) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text("Use test location")
+                                                Text(
+                                                    "Zurich, for development off-site",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        },
+                                        trailingIcon = {
+                                            Checkbox(checked = useTestLocation, onCheckedChange = null)
+                                        },
+                                        onClick = {
+                                            onUseTestLocationChanged(!useTestLocation)
+                                            menuOpen = false
+                                        },
+                                    )
+                                }
                             } else {
                                 DropdownMenuItem(
                                     text = { Text("Zones") },
@@ -496,11 +499,12 @@ private fun SearchScreenContent(
                 )
             }
             if (showSearchHere) {
-                ElevatedButton(
+                Button(
                     onClick = {
                         mapState.center?.let { onSearchHere(it.latitude, it.longitude) }
                     },
                     modifier = Modifier.padding(top = 12.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp, pressedElevation = 2.dp),
                 ) {
                     Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
@@ -518,8 +522,8 @@ private fun SearchScreenContent(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(painterResource(R.drawable.ic_my_location), contentDescription = "Recenter")
             }
