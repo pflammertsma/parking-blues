@@ -1,18 +1,19 @@
 [versions]
 agp = "9.4.1"
-kotlin = "2.2.10"
-compose-bom = "2024.10.01"
-compose-compiler = "2.0.21"
-ktor = "3.0.1"
-kotlinx-serialization = "1.7.3"
-kotlinx-coroutines = "1.9.0"
-androidx-core-ktx = "1.15.0"
-androidx-activity-compose = "1.9.3"
-androidx-lifecycle = "2.8.6"
-androidx-car-app = "1.4.0"
-play-services-location = "21.3.0"
+kotlin = "2.4.20"
+compose-bom = "2026.09.00"
+ktor = "3.6.0"
+kotlinx-serialization = "1.11.0"
+kotlinx-coroutines = "1.11.0"
+androidx-core-ktx = "1.19.1"
+androidx-activity-compose = "1.13.0"
+androidx-lifecycle = "2.11.0"
+androidx-car-app = "1.7.0"
+play-services-location = "21.4.0"
 osmdroid = "6.1.20"
-androidx-work = "2.9.1"
+androidx-work = "2.12.0"
+androidx-credentials = "1.6.0"
+googleid = "1.2.1"
 
 [libraries]
 android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
@@ -37,6 +38,9 @@ androidx-car-app = { module = "androidx.car.app:app", version.ref = "androidx-ca
 androidx-car-app-automotive = { module = "androidx.car.app:app-automotive", version.ref = "androidx-car-app" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "play-services-location" }
 osmdroid-android = { module = "org.osmdroid:osmdroid-android", version.ref = "osmdroid" }
+androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "androidx-credentials" }
+androidx-credentials-play-services-auth = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "androidx-credentials" }
+googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleid" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "androidx-work" }
 
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
