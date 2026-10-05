@@ -1,5 +1,6 @@
 flask>=3.1
 gunicorn>=23.0
+flask-limiter>=3.8
 pytest>=8.0
 # zoneinfo (used for the Europe/Zurich blue-zone rules) relies on a system
 # tz database that Linux/Cloud Run has but Windows doesn't ship -- without

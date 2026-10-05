@@ -216,3 +216,78 @@ button:disabled {
   background: var(--log-bg);
   padding: 0.5rem 1.5rem;
 }
+
+/* Privacy policy and terms of use pages, plus the footer linking to them. */
+body.legal-page {
+  max-width: 720px;
+}
+
+.topbar h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.legal-nav a,
+.legal a,
+.site-footer a {
+  color: var(--zone-blue);
+}
+
+.legal {
+  line-height: 1.6;
+}
+
+.legal h2 {
+  font-size: 1.6rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.legal h3 {
+  font-size: 1.1rem;
+  margin: 1.75rem 0 0.4rem;
+}
+
+.legal h4 {
+  font-size: 1rem;
+  margin: 1.1rem 0 0.25rem;
+}
+
+.legal .meta {
+  color: var(--muted-fg);
+  margin-top: 0;
+}
+
+.legal ul {
+  padding-left: 1.25rem;
+}
+
+.legal li {
+  margin: 0.3rem 0;
+}
+
+.retention {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.retention th,
+.retention td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.retention th {
+  color: var(--muted-fg);
+  font-weight: 600;
+}
+
+.site-footer {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted-fg);
+  font-size: 0.9rem;
+}

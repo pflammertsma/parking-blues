@@ -15,6 +15,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.isSuccess
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.SerialName
@@ -35,8 +36,32 @@ import kotlinx.serialization.json.Json
 class SessionNotFoundException(sessionId: String) :
     Exception("Session $sessionId no longer exists on the server")
 
-private suspend inline fun <reified T> HttpResponse.bodyOrThrowIfSessionGone(sessionId: String): T {
-    if (status == HttpStatusCode.NotFound) throw SessionNotFoundException(sessionId)
+/**
+ * The backend rate-limits anonymous callers and answers 429 with a
+ * Retry-After header. Surfaced as its own type so the repository can pause
+ * instead of hammering a server that has just said "slow down".
+ */
+class RateLimitedException(val retryAfterSeconds: Int?) :
+    Exception("Too many requests; slowing down for a moment")
+
+/** Any other non-success response, with the status in the message instead of a decode error. */
+class ApiException(val status: Int) : Exception("Server error ($status)")
+
+/**
+ * Turns error statuses into specific exceptions before decoding. Without this,
+ * an error body like {"error": "..."} would be force-decoded as the expected
+ * type and fail with an unrelated kotlinx.serialization error.
+ * [sessionId] is passed for calls on an existing session, where 404 means the
+ * session is gone (see [SessionNotFoundException]).
+ */
+private suspend inline fun <reified T> HttpResponse.bodyOrThrow(sessionId: String? = null): T {
+    when {
+        status == HttpStatusCode.TooManyRequests ->
+            throw RateLimitedException(headers["Retry-After"]?.toIntOrNull())
+        status == HttpStatusCode.NotFound && sessionId != null ->
+            throw SessionNotFoundException(sessionId)
+        !status.isSuccess() -> throw ApiException(status.value)
+    }
     return body()
 }
 
@@ -87,25 +112,25 @@ class ParkingApiClient private constructor(
     ): SessionSnapshot = http.post("$baseUrl/api/session") {
         contentType(ContentType.Application.Json)
         setBody(CreateSessionRequest(lat, lon, zone.wireValue, durationMinutes))
-    }.body()
+    }.bodyOrThrow()
 
     suspend fun getSession(sessionId: String): SessionSnapshot =
-        http.get("$baseUrl/api/session/$sessionId").bodyOrThrowIfSessionGone(sessionId)
+        http.get("$baseUrl/api/session/$sessionId").bodyOrThrow(sessionId)
 
     suspend fun updatePosition(sessionId: String, lat: Double, lon: Double): SessionSnapshot =
         http.post("$baseUrl/api/session/$sessionId/position") {
             contentType(ContentType.Application.Json)
             setBody(PositionRequest(lat, lon))
-        }.bodyOrThrowIfSessionGone(sessionId)
+        }.bodyOrThrow(sessionId)
 
     suspend fun rejectCurrent(sessionId: String): SessionSnapshot =
-        http.post("$baseUrl/api/session/$sessionId/reject").bodyOrThrowIfSessionGone(sessionId)
+        http.post("$baseUrl/api/session/$sessionId/reject").bodyOrThrow(sessionId)
 
     suspend fun confirmCurrent(sessionId: String): SessionSnapshot =
-        http.post("$baseUrl/api/session/$sessionId/confirm").bodyOrThrowIfSessionGone(sessionId)
+        http.post("$baseUrl/api/session/$sessionId/confirm").bodyOrThrow(sessionId)
 
     suspend fun expandRadius(sessionId: String): SessionSnapshot =
-        http.post("$baseUrl/api/session/$sessionId/expand").bodyOrThrowIfSessionGone(sessionId)
+        http.post("$baseUrl/api/session/$sessionId/expand").bodyOrThrow(sessionId)
 
     fun close() = http.close()
 }

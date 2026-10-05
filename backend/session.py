@@ -5,7 +5,9 @@ can be unit tested with synthetic position sequences without a server or
 real GPS -- see tests/test_session.py.
 """
 
+import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -140,6 +142,9 @@ class ParkingSession:
     # cycle to complete against real, tightly-packed data).
     closest_approach_m: dict[str, float] = field(default_factory=dict)
     state: SessionState = SessionState.SEARCHING
+    # Last time any request touched this session, on the store's clock; used
+    # only to expire abandoned sessions (see SessionStore).
+    touched_at: float = 0.0
 
     @property
     def current(self) -> ParkingSegment | None:
@@ -234,14 +239,52 @@ class ParkingSession:
         return "tracking"
 
 
+# Sessions nobody has touched for this long are dropped. A live drive sends a
+# position update every second or so, so only abandoned sessions ever hit it.
+# Clients treat the resulting 404 as "start a fresh session" (see the Android
+# repository), so expiry is invisible to a returning user.
+SESSION_IDLE_TTL_S = 2 * 60 * 60
+# Hard ceiling so anonymous traffic can never grow memory without bound; when
+# exceeded, the longest-idle sessions go first.
+MAX_SESSIONS = 5000
+
+
 class SessionStore:
     """In-memory session storage. An MVP-appropriate substitute for real
     persistence -- fine for a single-process dev server, not for production.
+
+    Sessions expire after [idle_ttl_s] of inactivity and the total is capped
+    at [max_sessions]: with no accounts yet, anyone can create sessions, so
+    the store must bound itself.
     """
 
-    def __init__(self, all_segments: list[ParkingSegment]):
+    def __init__(
+        self,
+        all_segments: list[ParkingSegment],
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        idle_ttl_s: float = SESSION_IDLE_TTL_S,
+        max_sessions: int = MAX_SESSIONS,
+    ):
         self._all_segments = all_segments
         self._sessions: dict[str, ParkingSession] = {}
+        self._clock = clock
+        self._idle_ttl_s = idle_ttl_s
+        self._max_sessions = max_sessions
+
+    def __len__(self) -> int:
+        return len(self._sessions)
+
+    def _evict(self) -> None:
+        now = self._clock()
+        expired = [sid for sid, s in self._sessions.items() if now - s.touched_at > self._idle_ttl_s]
+        for sid in expired:
+            del self._sessions[sid]
+        overflow = len(self._sessions) - self._max_sessions + 1  # room for the one being added
+        if overflow > 0:
+            oldest = sorted(self._sessions.values(), key=lambda s: s.touched_at)[:overflow]
+            for s in oldest:
+                del self._sessions[s.id]
 
     def _candidates_for(
         self, zone_filter: set[ZoneType], radius_m: float, origin_lat: float,
@@ -290,13 +333,23 @@ class SessionStore:
             preferred_duration_minutes=preferred_duration_minutes,
             state=SessionState.SEARCHING if candidates else SessionState.EXHAUSTED,
         )
+        self._evict()
+        session.touched_at = self._clock()
         self._sessions[session.id] = session
         if session.state == SessionState.EXHAUSTED:
             self._auto_expand_while_exhausted(session, now)
         return session
 
     def get(self, session_id: str) -> ParkingSession | None:
-        return self._sessions.get(session_id)
+        session = self._sessions.get(session_id)
+        if session is None:
+            return None
+        now = self._clock()
+        if now - session.touched_at > self._idle_ttl_s:
+            del self._sessions[session_id]
+            return None
+        session.touched_at = now
+        return session
 
     def expand_radius(self, session: ParkingSession, now: datetime | None = None) -> ParkingSession:
         now = now or datetime.now(ZURICH_TZ)

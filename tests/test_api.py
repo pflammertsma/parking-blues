@@ -187,3 +187,15 @@ def test_reject_until_exhausted_then_expand(client):
     # Both candidates were rejected, so expanding the radius still leaves
     # nothing to offer -- state should remain exhausted, not error out.
     assert body["state"] == "exhausted"
+
+
+def test_privacy_policy_and_terms_are_served_and_link_to_each_other(client):
+    privacy = client.get("/privacy.html")
+    terms = client.get("/terms.html")
+    assert privacy.status_code == 200 and terms.status_code == 200
+    assert b"paul@lammertsma.dev" in privacy.data and b"paul@lammertsma.dev" in terms.data
+    assert b'href="terms.html"' in privacy.data
+    assert b'href="privacy.html"' in terms.data
+    # The project page links to both, so Play and users can find them.
+    index = client.get("/").data
+    assert b'href="privacy.html"' in index and b'href="terms.html"' in index

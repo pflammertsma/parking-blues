@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy web/ into a lammertsma-dev checkout's public/projects/parking-blues/,
+"""Copy web/ (page, privacy policy, terms) into a lammertsma-dev checkout's public/projects/parking-blues/,
 applying the small portfolio-site-specific tweaks (noindex, favicon, title
 byline) that web/index.html itself doesn't carry -- see README section 11.
 
@@ -24,7 +24,7 @@ HEAD_INSERT = (
 )
 
 
-def patch_index_html(html: str) -> str:
+def patch_site_html(html: str) -> str:
     html = html.replace(
         '  <meta name="viewport" content="width=device-width, initial-scale=1" />\n',
         '  <meta name="viewport" content="width=device-width, initial-scale=1" />\n'
@@ -51,8 +51,11 @@ def main() -> None:
     for name in ("app.js", "style.css"):
         shutil.copyfile(WEB_DIR / name, dest_dir / name)
 
-    index_html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
-    (dest_dir / "index.html").write_text(patch_index_html(index_html), encoding="utf-8")
+    # index.html plus the privacy policy and terms (linked from the Play listing,
+    # the app and the footer). All get the same portfolio-site tweaks.
+    for name in ("index.html", "privacy.html", "terms.html"):
+        html = (WEB_DIR / name).read_text(encoding="utf-8")
+        (dest_dir / name).write_text(patch_site_html(html), encoding="utf-8")
 
     print(f"Published web/ -> {dest_dir}")
 

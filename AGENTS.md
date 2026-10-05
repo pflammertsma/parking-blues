@@ -28,6 +28,13 @@ The algorithm (candidate generation, DBSCAN clustering, scoring, retargeting hys
 * **Do not duplicate the algorithm in mobile/frontend clients.** Clients submit GPS coordinates and render whatever the server returns.
 * **`SessionStore`:** Currently an in-memory dictionary. Cloud Run deployment must be pinned to `--max-instances=1` to prevent split-brain sessions across container instances.
 
+### Abuse protection (anonymous API)
+* **Rate limits** live in `backend/app.py` (`RateLimits`, Flask-Limiter with in-memory counters) and are tested in `tests/test_rate_limits.py`. Per-IP limits are generous because mobile carriers share IPs; the tight limit on position updates is keyed by **session id**.
+* **Client IP** comes from `ProxyFix(x_for=1)`: exactly one trusted hop (the entry Cloud Run appends), so a client-supplied `X-Forwarded-For` cannot dodge limits.
+* **Single-process assumption:** counters and sessions are in memory, so they are only correct while one process serves the API (Cloud Run `--max-instances=1`, one gunicorn worker). Use a shared store before scaling out.
+* `SessionStore` expires idle sessions (2 h) and caps the total (5000). Clients treat the resulting 404 as "start a new session"; a `429` makes the Android repository pause live updates until `Retry-After` has passed.
+* **Gotcha:** `SessionStore` defines `__len__`, so an *empty* store is falsy. Never write `store or default`; compare with `is None`. The Flask-Limiter decorators hold only a weak reference to the limiter, so `create_app` keeps a strong one in `app.extensions`.
+
 ### Algorithmic Decisions
 * **Clustering (`backend/clustering.py`):**
   * `DEFAULT_CLUSTER_EPS_M = 12.0`: Tight threshold to group continuous curb runs without chaining across street corners or intersections.
@@ -132,4 +139,5 @@ adb shell am start -n dev.lammertsma.parkingblues.debug/dev.lammertsma.parkingbl
   * CI Workflow: `.github/workflows/deploy-backend.yml` automatically deploys on pushes touching `backend/`.
 * **Frontend Hosting:**
   * Hosted at `https://lammertsma.dev/projects/parking-blues` via Firebase Hosting in `pflammertsma/lammertsma-dev`.
-  * Published via `.github/workflows/publish-frontend.yml`.
+  * Published via `.github/workflows/publish-frontend.yml`, which runs `scripts/publish_to_lammertsma.py`. That script copies an explicit list of files (page, `app.js`, `style.css`, `privacy.html`, `terms.html`): add any new page to it or it will never be published.
+  * The privacy policy and terms live in `web/` (`/projects/parking-blues/privacy`, `/terms`); keep them in step with what the app and server actually do.

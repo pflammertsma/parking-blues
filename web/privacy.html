@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Privacy Policy (Parking Blues)</title>
+  <meta name="description" content="How the Parking Blues app and web page handle your data." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="legal-page">
+  <header class="topbar">
+    <h1><a href="./">Parking Blues</a></h1>
+    <nav class="legal-nav"><a href="terms.html">Terms of use</a></nav>
+  </header>
+
+  <main class="legal">
+    <h2>Privacy Policy</h2>
+    <p class="meta">Last updated: 5 October 2026</p>
+
+    <p>
+      Parking Blues helps drivers find legal on-street parking in Zurich. This policy
+      explains what data the Android app (including Android Auto and Android Automotive OS)
+      and this web page handle, why, and what your choices are. It is written to be read,
+      so it is short on purpose.
+    </p>
+
+    <h3>Who is responsible</h3>
+    <p>
+      Paul Lammertsma, Switzerland, is responsible for Parking Blues. Contact:
+      <a href="mailto:paul@lammertsma.dev">paul@lammertsma.dev</a>.
+    </p>
+
+    <h3>In short</h3>
+    <ul>
+      <li>There are <strong>no accounts, no ads and no analytics or tracking</strong>.</li>
+      <li>Your location is used only while you use the app, to find parking near you.</li>
+      <li>The server keeps your search only in memory, and deletes it after at most two hours without activity.</li>
+      <li>Where you parked is stored <strong>on your device only</strong>.</li>
+      <li>We do not sell data or share it for advertising.</li>
+    </ul>
+
+    <h3>What data is processed</h3>
+
+    <h4>Your location</h4>
+    <p>
+      When you start a search, the app sends your precise location (latitude and longitude)
+      to the Parking Blues server. While a search is running, it sends updates about once a
+      second so the server can tell whether you have driven past a parking spot. The app
+      asks for location permission and uses it only while it is open or while the car
+      screen is showing; it does not track you in the background. You can deny or withdraw
+      the permission in your device settings, but the app cannot find parking near you
+      without it. On the web page, location is requested by your browser only if you choose
+      "use my location" or move the pin yourself.
+    </p>
+    <p>
+      The server holds each search (the point you searched from, your latest position, the
+      zone type you chose and which parking spots you have already passed) <strong>in
+      memory only</strong>, linked to a random session identifier rather than to a name,
+      email address or device identifier. It is not written to a database. A search is
+      deleted after at most two hours without activity, and also whenever the server
+      restarts.
+    </p>
+
+    <h4>Technical data in server logs</h4>
+    <p>
+      Like any online service, the server (hosted on Google Cloud, region Belgium) records
+      your IP address, the time, the requested address (which includes the random session
+      identifier but not your coordinates), the response status and the type of app or
+      browser. We use this to keep the service running, to detect and stop abuse, and for
+      rate limiting, which counts requests per IP address in memory for short periods. Google Cloud keeps these logs for
+      about 30 days by default.
+    </p>
+
+    <h4>Stored on your device only</h4>
+    <p>
+      The app remembers your last zone choice and, if you tap "Parked here", where and when
+      you parked (coordinates, the zone, an address label and the time limit when known).
+      This is kept in the app's private storage on your phone to show you where your car is
+      and to remind you before a blue-zone time limit runs out. It is <strong>not sent to
+      the server</strong> and is removed when you tap "I found my car" or uninstall the app.
+    </p>
+
+    <h4>Notifications</h4>
+    <p>
+      The app shows local notifications about your parked car and expiring time limits. They
+      are created on your device; no push-notification service is involved.
+    </p>
+
+    <h3>Third parties that receive some data</h3>
+    <ul>
+      <li>
+        <strong>Map tiles (CARTO).</strong> Maps are loaded as images from CARTO's servers
+        (basemaps.cartocdn.com), built on OpenStreetMap data. When you view the map, CARTO
+        receives your IP address and which part of the map you are looking at. See
+        <a href="https://carto.com/privacy" rel="noopener">CARTO's privacy policy</a>.
+      </li>
+      <li>
+        <strong>Google Play services and Android Auto.</strong> The Android app gets your
+        device location through Google Play services, and Android Auto or Android Automotive
+        OS display the car screens. Google's own privacy terms apply to that:
+        <a href="https://policies.google.com/privacy" rel="noopener">policies.google.com/privacy</a>.
+      </li>
+      <li>
+        <strong>Google Cloud and Firebase Hosting</strong> host the server and this web page
+        and may log requests as described above.
+      </li>
+      <li>
+        <strong>Leaflet (unpkg.com).</strong> This web page loads the Leaflet map library
+        from the unpkg content delivery network, which receives your IP address when the
+        page loads.
+      </li>
+    </ul>
+    <p>
+      The parking data itself comes from the City of Zurich's open data and is not about
+      you. Parking Blues is an independent project and is not affiliated with the City of
+      Zurich.
+    </p>
+
+    <h3>This web page</h3>
+    <p>
+      This page does not use cookies or analytics. It stores your light/dark theme choice in your
+      browser's local storage, which never leaves your browser. Other parts of
+      lammertsma.dev are covered by the site's own <a href="/privacy">privacy statement</a>.
+    </p>
+
+    <h3>How long data is kept</h3>
+    <table class="retention">
+      <thead><tr><th>Data</th><th>Where</th><th>Kept</th></tr></thead>
+      <tbody>
+        <tr><td>Search and live position</td><td>Server memory</td><td>Up to 2 hours after last activity; lost on restart</td></tr>
+        <tr><td>Rate-limit counters (IP address)</td><td>Server memory</td><td>Minutes to one day</td></tr>
+        <tr><td>Server logs (IP, time, request, status)</td><td>Google Cloud Logging</td><td>About 30 days</td></tr>
+        <tr><td>Last zone, parked spot</td><td>Your device</td><td>Until you clear it or uninstall</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Where data is processed</h3>
+    <p>
+      The server runs in Google Cloud's Belgium region (europe-west1). Your data can
+      therefore be processed outside Switzerland. Google is bound by its own data protection
+      commitments for the safeguards that apply.
+    </p>
+
+    <h3>Why, and on what basis</h3>
+    <p>
+      We process location because you ask the app to find parking near you (with your
+      permission), and technical data because we have a legitimate interest in running
+      and protecting the service. This policy follows the Swiss Federal Act on Data
+      Protection and, for users in the EU, the GDPR.
+    </p>
+
+    <h3>Your rights</h3>
+    <p>
+      You can ask what data we hold about you, to have it corrected or deleted, or object to
+      its processing, by writing to <a href="mailto:paul@lammertsma.dev">paul@lammertsma.dev</a>.
+      Because we do not have accounts and a search is linked only to a random identifier, we
+      can usually only find data if you tell us roughly when you used the service and from
+      which IP address. You can also complain to the Swiss Federal Data Protection and
+      Information Commissioner (FDPIC) or to your local data protection authority.
+    </p>
+
+    <h3>Children</h3>
+    <p>
+      Parking Blues is meant for people who drive and is not aimed at children. We do not
+      knowingly collect data from children.
+    </p>
+
+    <h3>Security</h3>
+    <p>
+      Data travels over encrypted connections (HTTPS). The service limits how often it
+      can be called to protect it from abuse. No online service can promise absolute security.
+    </p>
+
+    <h3>Changes</h3>
+    <p>
+      We may update this policy, for example if the app starts to use new features such as
+      accounts. The date at the top shows when it last changed, and material changes will be
+      announced in the app or its store listing before they apply.
+    </p>
+
+    <h3>Contact</h3>
+    <p><a href="mailto:paul@lammertsma.dev">paul@lammertsma.dev</a></p>
+  </main>
+
+  <footer class="site-footer">
+    <a href="./">Parking Blues</a> · <a href="terms.html">Terms of use</a>
+  </footer>
+</body>
+</html>

@@ -1,12 +1,16 @@
 package dev.lammertsma.parkingblues.shared
 
 import dev.lammertsma.parkingblues.shared.api.ParkingApiClient
+import dev.lammertsma.parkingblues.shared.api.RateLimitedException
 import dev.lammertsma.parkingblues.shared.api.SessionNotFoundException
 import dev.lammertsma.parkingblues.shared.model.SessionSnapshot
 import dev.lammertsma.parkingblues.shared.model.ZoneFilter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * Reactive holder for the one active session, shared by both the phone
@@ -28,6 +32,10 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
     // doc) can be silently restarted with the same zone, rather than
     // needing the caller to re-supply it.
     private var lastZone: ZoneFilter = ZoneFilter.BOTH
+
+    // After the server answers 429, live position updates pause until its
+    // Retry-After has passed instead of retrying every second.
+    private var resumeUpdatesAt: TimeMark? = null
     private var lastDurationMinutes: Int? = null
 
     suspend fun startSearch(
@@ -49,6 +57,7 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
     suspend fun updatePosition(lat: Double, lon: Double, bearing: Float? = null) {
         if (bearing != null) _bearing.value = bearing
         val id = _session.value?.sessionId ?: return
+        if (resumeUpdatesAt?.hasNotPassedNow() == true) return
         runCatching { api.updatePosition(id, lat, lon) }
             .onSuccess { _session.value = it; _error.value = null }
             .onFailure { recoverOrSetError(it, lat, lon, "Failed to update position") }
@@ -85,7 +94,10 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
      * driver had no part in and can't act on.
      */
     private suspend fun recoverOrSetError(failure: Throwable, lat: Double?, lon: Double?, fallbackMessage: String) {
-        if (failure is SessionNotFoundException && lat != null && lon != null) {
+        if (failure is RateLimitedException) {
+            resumeUpdatesAt = TimeSource.Monotonic.markNow() + (failure.retryAfterSeconds ?: DEFAULT_BACKOFF_SECONDS).seconds
+            _error.value = failure.message
+        } else if (failure is SessionNotFoundException && lat != null && lon != null) {
             startSearch(lat, lon, lastZone, lastDurationMinutes)
         } else {
             _error.value = failure.message ?: fallbackMessage
@@ -97,5 +109,9 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
         _session.value = null
         _bearing.value = null
         _error.value = null
+    }
+
+    private companion object {
+        const val DEFAULT_BACKOFF_SECONDS = 10
     }
 }

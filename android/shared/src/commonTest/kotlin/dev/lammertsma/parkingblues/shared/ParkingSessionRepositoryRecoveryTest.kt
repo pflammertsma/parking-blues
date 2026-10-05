@@ -142,4 +142,59 @@ class ParkingSessionRepositoryRecoveryTest {
         repository.updatePosition(47.38, 8.55)
         assertNull(repository.error.value)
     }
+
+    @Test
+    fun rateLimitedUpdate_showsAFriendlyMessageAndPausesFurtherUpdates() = runTest {
+        val you = LatLon(47.3769, 8.5417)
+        var positionCalls = 0
+        var sessionsCreated = 0
+        val engine = MockEngine { request ->
+            when {
+                request.url.encodedPath == "/api/session" -> {
+                    sessionsCreated++
+                    respond(json.encodeToString(snapshot("session-1", you)), HttpStatusCode.OK, jsonHeaders)
+                }
+                else -> {
+                    positionCalls++
+                    respond(
+                        """{"error":"rate limit exceeded"}""",
+                        HttpStatusCode.TooManyRequests,
+                        headersOf(HttpHeaders.RetryAfter, "30"),
+                    )
+                }
+            }
+        }
+        val repository = ParkingSessionRepository(ParkingApiClient("https://test.invalid", engine))
+
+        repository.startSearch(you.lat, you.lon, ZoneFilter.BOTH)
+        repository.updatePosition(47.38, 8.55)
+
+        assertEquals(1, positionCalls)
+        assertTrue(repository.error.value.orEmpty().contains("slowing down"), repository.error.value)
+        assertEquals("session-1", repository.session.value?.sessionId)
+        assertEquals(1, sessionsCreated, "being throttled must not restart the search")
+
+        // Within the 30 s Retry-After window, further updates are not even sent.
+        repository.updatePosition(47.38, 8.55)
+        repository.updatePosition(47.38, 8.55)
+        assertEquals(1, positionCalls)
+    }
+
+    @Test
+    fun otherServerErrors_reportTheStatusNotADecodeFailure() = runTest {
+        val you = LatLon(47.3769, 8.5417)
+        val engine = MockEngine { request ->
+            if (request.url.encodedPath == "/api/session") {
+                respond("""{"error":"boom"}""", HttpStatusCode.InternalServerError, jsonHeaders)
+            } else {
+                respond("", HttpStatusCode.OK, jsonHeaders)
+            }
+        }
+        val repository = ParkingSessionRepository(ParkingApiClient("https://test.invalid", engine))
+
+        repository.startSearch(you.lat, you.lon, ZoneFilter.BOTH)
+
+        assertEquals("Server error (500)", repository.error.value)
+        assertNull(repository.session.value)
+    }
 }
