@@ -94,6 +94,8 @@ Why it came up: the web page's drag simulator sent a position every 200 ms again
 - [x] **Keep the web page in step:** the restyled pages, `?v=` cache-busting and the 800 ms position throttle were ported from `lammertsma-dev/public/projects/parking-blues/` into `web/` (which is the source of truth; edit it here, never in `lammertsma-dev`).
 
 ## Car (Android Auto / Automotive OS)
+- [ ] **Resubmit to Play** (release 4, includes the launch-crash fix and the nearby-areas list). Re-test a fresh release install with nothing granted before each submission (`AGENTS.md` gotcha 13).
+- [ ] **Crash reporting (Firebase Crashlytics):** add to `:app` and `:automotive` (release only) so crashes in the wild, including Play review devices, show up. Needs a Firebase project (add Firebase to `parking-blues-mvp`), `google-services.json` per package (`dev.lammertsma.parkingblues` and the `.debug` one), and then: privacy policy (crash reports, installation ID), Play Data safety (crash logs, diagnostics), and `android/README.md`.
 - [ ] Confirm on the DHU that the icon-only Recenter button and the debug-only ⋮ button fit the action strip, and that Developer options and the test-location toggle work.
 - [ ] Verify the heading and position smoothing on a real drive (arrow follows travel direction, no hopping).
 - [ ] Capture and review the car screen in light and dark.

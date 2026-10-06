@@ -272,6 +272,15 @@ class MapSearchScreen(
         }
     }
 
+    /** "Show on map" from an area's details: stop following the driver and look at the area. */
+    private fun focusOnArea(center: GeoPoint) {
+        isFollowingUser = false
+        mapView?.let {
+            it.controller.setZoom(18.0)
+            it.controller.animateTo(recenterTarget(center))
+        }
+    }
+
     /**
      * Where to tell the camera to center so "you" actually lands in the
      * middle of the *visible* area (not obscured by the content pane).
@@ -612,7 +621,16 @@ class MapSearchScreen(
         val summary = Row.Builder().setTitle(computeSummaryTitle(snapshot))
         // Parking data only covers the city of Zurich, so an empty result
         // far from it is expected -- say so instead of leaving a dead end.
-        if (snapshot.state == SessionState.EXHAUSTED) summary.addText("Data covers the city of Zurich")
+        if (snapshot.state == SessionState.EXHAUSTED) {
+            summary.addText("Data covers the city of Zurich")
+        } else if (NearbyAreas.top(snapshot, 1).isNotEmpty()) {
+            // Tapping opens the short list of the best areas (see NearbyScreen).
+            summary.addText("See the best areas nearby")
+                .setBrowsable(true)
+                .setOnClickListener {
+                    screenManager.push(NearbyScreen(carContext, repository, ::focusOnArea))
+                }
+        }
         val items = ItemList.Builder().addItem(summary.build())
         return ListTemplate.Builder()
             .setTitle("Parking Blues")
@@ -623,42 +641,6 @@ class MapSearchScreen(
 
     private val isDebuggableBuild: Boolean
         get() = carContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
-
-    private fun listContentTemplate(snapshot: SessionSnapshot): Template {
-        val items = ItemList.Builder()
-        for (segment in MapClustering.activeCandidates(snapshot)) {
-            items.addItem(compactRow(segment))
-        }
-        return ListTemplate.Builder()
-            .setTitle("Parking Blues")
-            .setHeaderAction(Action.APP_ICON)
-            .setSingleList(items.build())
-            .build()
-    }
-
-    /**
-     * One line per candidate -- no spot ID (the ingested data's "address"
-     * is just an internal database number, meaningless to a driver -- see
-     * android/README.md) and no rank/target distinction (see class doc).
-     * Just enough to glance at and compare against what's on the map.
-     */
-    private fun compactRow(segment: ParkingSegment): Row {
-        val zoneLabel = if (segment.zoneType == ZoneType.BLUE) "Blue" else "White"
-        val distanceM = segment.distanceFromYouM.toInt()
-        return Row.Builder()
-            .setTitle("$zoneLabel · $distanceM m${detailText(segment)}")
-            .build()
-    }
-
-    private fun detailText(segment: ParkingSegment): String {
-        if (segment.zoneType == ZoneType.BLUE) {
-            val clockTime = segment.legalUntil?.let { it.substring(11, 16) }
-            return clockTime?.let { " · until ~$it" } ?: " · no time limit"
-        }
-        val cap = segment.maxDurationMinutes?.let { "$it min" } ?: "no fixed limit"
-        val rate = segment.estimatedFeeChfPerHour
-        return if (rate != null) " · $cap · ~CHF ${"%.2f".format(rate)}/h" else " · $cap"
-    }
 
     private fun errorOrEmptyTemplate(): Template {
         val message = repository.error.value ?: "No active search."
