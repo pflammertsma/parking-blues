@@ -30,7 +30,13 @@ L.tileLayer(
 
 const originMarker = L.marker([DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lon], {
   draggable: true,
-}).addTo(map).bindTooltip("Destination", { permanent: true, direction: "top" });
+}).addTo(map).bindTooltip("Destination", {
+  permanent: true,
+  direction: "top",
+  // Leaflet's default pin has its tooltip anchor 4px right of the pin's centre
+  // and low on the head; shift the label to sit centred just above the pin.
+  offset: [-16, -14],
+});
 
 const youIcon = L.divIcon({
   className: "you-marker",

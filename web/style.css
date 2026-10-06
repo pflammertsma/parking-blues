@@ -505,6 +505,11 @@ input[type="radio"] {
 
 /* The map tiles are CARTO's light basemap; invert them in the dark theme
    rather than switching tile sets, so markers and popups are untouched. */
+/* The label sits right on its marker, so Leaflet's little pointer is redundant. */
+.leaflet-tooltip::before {
+  display: none;
+}
+
 .leaflet-tile-pane {
   filter: var(--map-tile-filter);
 }
