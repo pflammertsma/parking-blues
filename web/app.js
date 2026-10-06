@@ -439,10 +439,46 @@ $("use-geolocation").addEventListener("click", () => {
   );
 });
 
-$("start").addEventListener("click", async () => {
-  const { lat, lng } = originMarker.getLatLng();
-  const zone = selectedZone();
-  const duration_minutes = selectedDuration();
+// --- The search lives in the address bar ---------------------------------------
+// Starting a search adds a history entry whose URL carries the search, e.g.
+// #lat=47.37921&lng=8.53131&zone=both&stay=60, so Back returns to the form with
+// the same pin, Forward (or a reload, or a shared link) runs the search again.
+// It is the URL *fragment*, not a query string: browsers never send it to a
+// server, so the coordinates stay out of hosting and API logs.
+const ZONES = ["blue", "white", "both"];
+// Whether the current history entry is one this page added (so Back stays on
+// the page). False for an entry the visitor opened directly.
+let searchEntryPushed = false;
+
+function searchHash({ lat, lng, zone, duration_minutes }) {
+  const params = new URLSearchParams({ lat: lat.toFixed(5), lng: lng.toFixed(5), zone });
+  if (duration_minutes) params.set("stay", String(duration_minutes));
+  return `#${params}`;
+}
+
+// The search in the URL, or null when there is none or it is malformed.
+function parseSearchHash() {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const lat = parseFloat(params.get("lat"));
+  const lng = parseFloat(params.get("lng"));
+  const zone = params.get("zone");
+  const stay = params.get("stay");
+  if (!(Math.abs(lat) <= 90) || !(Math.abs(lng) <= 180) || !ZONES.includes(zone)) return null;
+  const duration_minutes = stay ? parseInt(stay, 10) : null;
+  if (stay && !(duration_minutes > 0)) return null;
+  return { lat, lng, zone, duration_minutes };
+}
+
+// Puts a search's values back into the form and onto the map.
+function applySearchToForm({ lat, lng, zone, duration_minutes }) {
+  originMarker.setLatLng([lat, lng]);
+  map.setView([lat, lng], 16);
+  document.querySelector(`input[name="zone"][value="${zone}"]`).checked = true;
+  $("duration").value = duration_minutes ? String(duration_minutes) : "";
+}
+
+async function startSearch({ lat, lng, zone, duration_minutes }, pushHistory) {
+  if (sessionId) return; // a search is already running
   let data;
   try {
     data = await api("/api/session", {
@@ -455,6 +491,10 @@ $("start").addEventListener("click", async () => {
   }
   showStatus("");
   sessionId = data.session_id;
+  if (pushHistory) {
+    history.pushState({ search: true }, "", searchHash({ lat, lng, zone, duration_minutes }));
+    searchEntryPushed = true;
+  }
   $("setup").hidden = true;
   $("session").hidden = false;
   $("reset").hidden = false;
@@ -502,6 +542,11 @@ $("start").addEventListener("click", async () => {
   youMarker.on("dragend", () => sendPosition(youMarker.getLatLng()));
 
   render(data);
+}
+
+$("start").addEventListener("click", () => {
+  const { lat, lng } = originMarker.getLatLng();
+  startSearch({ lat, lng, zone: selectedZone(), duration_minutes: selectedDuration() }, true);
 });
 
 $("expand").addEventListener("click", async () => {
@@ -513,8 +558,9 @@ $("expand").addEventListener("click", async () => {
   }
 });
 
-$("reset").addEventListener("click", () => {
+function resetSearch() {
   sessionId = null;
+  searchEntryPushed = false;
   if (youMarker) {
     map.removeLayer(youMarker);
     youMarker = null;
@@ -532,7 +578,37 @@ $("reset").addEventListener("click", () => {
   $("setup").hidden = false;
   $("map-hint").textContent = SETUP_HINT;
   showStatus("");
+}
+
+// "New search" is the same as Back when this page added the history entry;
+// otherwise (a search opened from a link) just clear it from the address.
+$("reset").addEventListener("click", () => {
+  if (searchEntryPushed) {
+    history.back();
+  } else {
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    resetSearch();
+  }
 });
+
+// Back and Forward: leave the search for the form, or run the search again.
+window.addEventListener("popstate", (event) => {
+  const search = parseSearchHash();
+  if (sessionId) resetSearch();
+  if (search) {
+    applySearchToForm(search);
+    startSearch(search, false).then(() => {
+      searchEntryPushed = !!(event.state && event.state.search);
+    });
+  }
+});
+
+// Opened (or reloaded) with a search in the address: run it.
+const initialSearch = parseSearchHash();
+if (initialSearch) {
+  applySearchToForm(initialSearch);
+  startSearch(initialSearch, false);
+}
 
 // Theme: "light" / "dark" force a choice regardless of OS setting; "system"
 // (the default) defers to prefers-color-scheme, handled in style.css.
