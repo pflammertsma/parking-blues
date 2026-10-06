@@ -97,6 +97,9 @@ The algorithm (candidate generation, DBSCAN clustering, scoring, retargeting hys
     * Separate `:app` and `:automotive` bundles under one `applicationId`, uploaded to different Play tracks. `CarAppActivity` extends `FragmentActivity`, so `androidx.fragment` must stay in `:automotive` (it is excluded from `:app`).
 11. **Debug builds use `applicationIdSuffix = ".debug"`:**
     * Never build class names from `context.packageName` (it no longer equals the Kotlin package); use `packageManager.getLaunchIntentForPackage` or explicit class references. adb commands for debug builds use `dev.lammertsma.parkingblues.debug/<fully.qualified.Class>`.
+13. **Never touch location before the permission is answered:**
+    * A fresh install has no location permission, and `LocationManager.getLastKnownLocation` then throws `SecurityException`. `MapSearchScreen` runs `lastKnownLocation()` from its constructor, i.e. before the permission dialog is answered, so an unguarded call crashes the app at launch. That is exactly what Play's Automotive review hit ("crashes at launch"). `lastKnownLocation()` now checks `hasLocationPermission()` and returns null, and callers fall back to central Zurich.
+    * Your own devices and the DHU already have the permission, and `adb shell pm grant` hides it too. **Before every release, test a fresh install with nothing granted**: `adb uninstall <id>`, install the *release* APK, launch, and try both Allow and Don't allow, on a Play-less AAOS image (`Automotive_Portrait_API_34-ext9`) and a Play one (`Automotive_1024p_landscape_API_32`).
 12. **Marker sizes differ per surface:**
     * `MapIcons` sizes are tuned for the projected car map; the phone passes `MapIcons.PHONE_ICON_SCALE` to render them smaller.
 

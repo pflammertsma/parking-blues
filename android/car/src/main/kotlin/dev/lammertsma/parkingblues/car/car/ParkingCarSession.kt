@@ -2,14 +2,13 @@ package dev.lammertsma.parkingblues.car.car
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import androidx.car.app.Screen
 import androidx.car.app.Session
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import dev.lammertsma.parkingblues.car.HasParkingRepository
 import dev.lammertsma.parkingblues.car.location.HeadingTracker
 import dev.lammertsma.parkingblues.car.location.PositionFilter
+import dev.lammertsma.parkingblues.car.location.hasLocationPermission
 import dev.lammertsma.parkingblues.car.location.locationUpdates
 import kotlinx.coroutines.launch
 
@@ -22,7 +21,7 @@ class ParkingCarSession : Session() {
     }
 
     override fun onCreateScreen(intent: Intent): Screen {
-        if (hasLocationPermission()) {
+        if (hasLocationPermission(carContext)) {
             startLocationUpdates()
         } else {
             // The car host can't show a normal Android runtime-permission
@@ -32,15 +31,13 @@ class ParkingCarSession : Session() {
             }
         }
 
+        // The screen must cope with the permission not being answered yet (a fresh
+        // install): it falls back to central Zurich until the first fix arrives.
         // MapSearchScreen is the whole app now -- no separate zone-pick
         // screen first; it auto-starts a search on the last-selected zone
         // itself (see its init block) if one isn't already running.
         return MapSearchScreen(carContext, repository)
     }
-
-    private fun hasLocationPermission() = ContextCompat.checkSelfPermission(
-        carContext, Manifest.permission.ACCESS_FINE_LOCATION
-    ) == PackageManager.PERMISSION_GRANTED
 
     // In the car the phone's compass is meaningless (it sits in a cradle or
     // cupholder), so heading is GPS course only and holds while stopped.

@@ -1,7 +1,9 @@
 package dev.lammertsma.parkingblues.car.location
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import com.google.android.gms.location.LocationCallback
@@ -9,6 +11,7 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
@@ -96,9 +99,32 @@ fun locationUpdates(context: Context): Flow<GpsFix> {
     }
 }
 
+/** Whether the app may read the device location (fine or coarse). */
+fun hasLocationPermission(context: Context): Boolean =
+  ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+    PackageManager.PERMISSION_GRANTED ||
+    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+    PackageManager.PERMISSION_GRANTED
+
+/**
+ * The best recent position, or null when there is none *or* the app has not been
+ * granted location permission yet. Callers fall back to central Zurich, so a fresh
+ * install (permission not yet answered) or a denied permission still shows a map
+ * instead of crashing: getLastKnownLocation throws SecurityException without it.
+ */
 @SuppressLint("MissingPermission")
 suspend fun lastKnownLocation(context: Context): Pair<Double, Double>? {
   if (isTestLocationEnabled(context)) return getSimulatedRouteStart()
+  if (!hasLocationPermission(context)) return null
+  return try {
+    lastKnownLocationWithPermission(context)
+  } catch (_: SecurityException) {
+    null // permission revoked between the check and the call
+  }
+}
+
+@SuppressLint("MissingPermission")
+private suspend fun lastKnownLocationWithPermission(context: Context): Pair<Double, Double>? {
 
   val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
   val bestFromLm = listOfNotNull(
