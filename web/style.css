@@ -934,39 +934,75 @@ input[type="radio"] {
   color: #fff;
 }
 
-.area-badge-wrap {
+.zone-icon-wrap,
+.destination-wrap,
+.you-wrap {
   background: none;
   border: none;
 }
 
-.area-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+/* The app's P square, with the area's rank on a small badge. */
+.zone-icon {
+  position: relative;
+  display: inline-block;
   flex: none;
-  width: 1.75rem;
-  height: 1.75rem;
-  font-size: 0.85rem;
+  width: 30px;
+  height: 30px;
+  line-height: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.zone-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.zone-rank {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 0.7rem;
   font-weight: 700;
-  line-height: 1;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
-}
-
-.area-badge.blue {
-  background: var(--zone-blue);
+  line-height: 16px;
+  text-align: center;
   color: #fff;
+  background: #1a1a1a;
+  border: 1.5px solid #fff;
+  border-radius: 8px;
 }
 
-.area-badge.white {
-  background: #f1f5f9;
-  color: #1a1a1a;
+.zone-icon.selected {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+  transform: scale(1.15);
 }
 
-.area-badge.selected {
-  transform: scale(1.2);
-  border-color: var(--primary);
+.area-row .zone-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.destination-arrow svg,
+.you-arrow svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.destination-arrow {
+  width: 38px;
+  height: 38px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.you-arrow {
+  width: 40px;
+  height: 40px;
+  transition: transform 0.3s ease;
 }
 
 @media (max-width: 600px) {

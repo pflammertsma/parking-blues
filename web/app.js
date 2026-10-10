@@ -30,19 +30,115 @@ L.tileLayer(
   }
 ).addTo(map);
 
+// --- The app's own artwork --------------------------------------------------------
+// Copied from the Android vector drawables (ic_zone_blue/white, ic_location_triangle,
+// ic_destination) so the page and the car map look alike. Colours match MapIcons.kt.
+const ZONE_ACCENT = "#268BCC";
+const P_PATH =
+  "M 116.7895,250.72353 V 122.75478 h 54 q 14.4375,-0.0937 24.1875,9.84375 9.65625,10.21875 9.5625,24.375 " +
+  "v 4.21875 q 0,12.84375 -8.4375,22.59375 -10.21875,11.53125 -25.40625,11.4375 H 140.227 v 55.5 z " +
+  "m 23.4375,-76.78125 h 27.375 q 6,0 9.65625,-3.5625 3.84375,-3.75 3.84375,-9.1875 v -4.21875 " +
+  "q 0,-5.25 -3.84375,-9.09375 -3.75,-3.84375 -9.5625,-3.84375 H 140.227 Z";
+const P_TRANSFORM = "translate(-79.282249 -153.73804) scale(2.0930654)";
+
+const ZONE_ICON_SVG = {
+  blue:
+    '<svg viewBox="0 0 474 474" aria-hidden="true"><path fill="#268BCC" d="M0,0H474V474H0Z" />' +
+    `<path fill="#fff" transform="${P_TRANSFORM}" d="${P_PATH}" /></svg>`,
+  white:
+    '<svg viewBox="0 0 474 474" aria-hidden="true"><path fill="#fff" stroke="#268BCC" stroke-width="22.68" d="M0,0H474V474H0Z" />' +
+    `<path fill="#268BCC" transform="${P_TRANSFORM}" d="${P_PATH}" /></svg>`,
+};
+
+// The purple, rounded "you" triangle (points up; rotated to the heading).
+const YOU_SVG =
+  '<svg viewBox="0 0 48 48" aria-hidden="true">' +
+  '<path fill="#000" fill-opacity="0.2" d="M 24,7.5 C 25.5,7.5 26.8,8.8 27.5,10.2 L 39.5,38.5 C 40.8,41.5 38.8,44.5 35.5,43.5 L 24,39.5 L 12.5,44.5 C 9.2,43.5 7.2,41.5 8.5,38.5 L 20.5,10.2 C 21.2,8.8 22.5,7.5 24,7.5 Z" />' +
+  '<path fill="#9C27B0" stroke="#fff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" d="M 24,5.5 C 25.5,5.5 26.8,6.8 27.5,8.2 L 39.5,36.5 C 40.8,39.5 38.8,42.5 35.5,41.5 L 24,37.5 L 12.5,41.5 C 9.2,42.5 7.2,39.5 8.5,36.5 L 20.5,8.2 C 21.2,6.8 22.5,5.5 24,5.5 Z" />' +
+  '<path fill="#BA68C8" d="M 24,9 C 24.8,9 25.5,9.7 25.9,10.5 L 36,34.5 L 24,30.5 L 12,34.5 L 22.1,10.5 C 22.5,9.7 23.2,9 24,9 Z" />' +
+  "</svg>";
+
+// The destination arrow. Black like the app's, with a white halo so it stays
+// visible on the dark map (the app only draws it on the light one).
+const DESTINATION_PATH =
+  "M 208.81682,142.52539 V 330.35156 H 128.72112 L 238.09612,439.72656 347.47112,330.35156 H 267.37541 V 142.52539 Z";
+const DESTINATION_SVG =
+  '<svg viewBox="0 0 474 474" aria-hidden="true"><g transform="translate(-1.0961151 18.238238)">' +
+  `<path fill="#fff" stroke="#fff" stroke-width="64" stroke-linejoin="round" d="${DESTINATION_PATH}" />` +
+  `<path fill="#000" stroke="#000" stroke-width="22.68" d="${DESTINATION_PATH}" /></g></svg>`;
+
+// The rotated rectangle the car map draws around an area (MapClustering.orientedBoxCorners):
+// aligned with the area's own spread, padded a little along and across it.
+const BOX_PAD_ALONG_M = 6;
+const BOX_PAD_ACROSS_M = 4;
+const METERS_PER_DEGREE_LAT = 111320;
+
+function orientedBoxCorners(points) {
+  const centerLat = points.reduce((sum, p) => sum + p[0], 0) / points.length;
+  const centerLon = points.reduce((sum, p) => sum + p[1], 0) / points.length;
+  const metersPerDegLon = METERS_PER_DEGREE_LAT * Math.max(Math.cos((centerLat * Math.PI) / 180), 0.01);
+  const local = points.map(([lat, lon]) => [(lon - centerLon) * metersPerDegLon, (lat - centerLat) * METERS_PER_DEGREE_LAT]);
+
+  let axisX = 0;
+  let axisY = 1;
+  let maxDist = -1;
+  for (let i = 0; i < local.length; i++) {
+    for (let j = i + 1; j < local.length; j++) {
+      const dx = local[j][0] - local[i][0];
+      const dy = local[j][1] - local[i][1];
+      const dist = Math.hypot(dx, dy);
+      if (dist > maxDist) {
+        maxDist = dist;
+        if (dist > 0) {
+          axisX = dx / dist;
+          axisY = dy / dist;
+        }
+      }
+    }
+  }
+  const perpX = -axisY;
+  const perpY = axisX;
+  let minAlong = Infinity, maxAlong = -Infinity, minAcross = Infinity, maxAcross = -Infinity;
+  for (const [x, y] of local) {
+    const along = x * axisX + y * axisY;
+    const across = x * perpX + y * perpY;
+    minAlong = Math.min(minAlong, along);
+    maxAlong = Math.max(maxAlong, along);
+    minAcross = Math.min(minAcross, across);
+    maxAcross = Math.max(maxAcross, across);
+  }
+  minAlong -= BOX_PAD_ALONG_M;
+  maxAlong += BOX_PAD_ALONG_M;
+  minAcross -= BOX_PAD_ACROSS_M;
+  maxAcross += BOX_PAD_ACROSS_M;
+
+  const corner = (along, across) => [
+    centerLat + (axisY * along + perpY * across) / METERS_PER_DEGREE_LAT,
+    centerLon + (axisX * along + perpX * across) / metersPerDegLon,
+  ];
+  return [corner(minAlong, minAcross), corner(maxAlong, minAcross), corner(maxAlong, maxAcross), corner(minAlong, maxAcross)];
+}
+
+// A zone icon with its rank on a small badge, for the map and the list.
+function zoneIconHtml(area, { selected = false } = {}) {
+  return `<span class="zone-icon${selected ? " selected" : ""}">${ZONE_ICON_SVG[area.zone_type]}` +
+    `<span class="zone-rank">${area.rank}</span></span>`;
+}
+
 // The destination: where the visitor wants to be. Everything shown is
 // relative to it; moving it (drag, tap on the map, address search, "my
 // location") is the one way to change the answer.
 const destinationMarker = L.marker([ZURICH_CENTER.lat, ZURICH_CENTER.lng], {
   draggable: true,
   keyboard: false,
-}).addTo(map).bindTooltip("Destination", {
-  permanent: true,
-  direction: "top",
-  // Leaflet's default pin has its tooltip anchor 4px right of the pin's centre
-  // and low on the head; shift the label to sit centred just above the pin.
-  offset: [-16, -14],
-});
+  icon: L.divIcon({
+    className: "destination-wrap",
+    html: `<div class="destination-arrow">${DESTINATION_SVG}</div>`,
+    iconSize: [38, 38],
+    iconAnchor: [19, 37], // the arrow's tip (0.966 down, as in the app)
+    tooltipAnchor: [0, -38],
+  }),
+}).addTo(map).bindTooltip("Destination", { permanent: true, direction: "top", offset: [0, -2] });
 const areaLayer = L.layerGroup().addTo(map);
 
 async function api(path, options = {}) {
@@ -395,29 +491,29 @@ function navigateUrl(area) {
 
 // --- Drawing -----------------------------------------------------------------------
 
-function badgeIcon(area, selected) {
-  return L.divIcon({
-    className: "area-badge-wrap",
-    html: `<span class="area-badge ${area.zone_type}${selected ? " selected" : ""}">${area.rank}</span>`,
-    iconSize: [28, 28],
-  });
-}
-
 function drawMap(fit) {
   areaLayer.clearLayers();
   // Weakest first so the best areas end up on top.
   for (const area of [...state.areas].reverse()) {
     const selected = area.rank === state.selected;
-    for (const [lat, lon] of area.spots) {
-      L.circleMarker([lat, lon], {
-        className: area.zone_type === "blue" ? "spot-blue" : "spot-white",
-        radius: selected ? 7 : 5,
-        fillOpacity: selected ? 0.95 : 0.55,
-        weight: selected ? 3 : 1,
-        interactive: false,
-      }).addTo(areaLayer);
-    }
-    L.marker([area.lat, area.lon], { icon: badgeIcon(area, selected), keyboard: false, zIndexOffset: selected ? 1000 : 0 })
+    // The box around the area's spots, then its zone icon in the middle, as on the car map.
+    L.polygon(orientedBoxCorners(area.spots), {
+      color: ZONE_ACCENT,
+      weight: selected ? 5 : 3,
+      fillColor: area.zone_type === "blue" ? ZONE_ACCENT : "#ffffff",
+      fillOpacity: selected ? 0.5 : 0.35,
+      interactive: false,
+    }).addTo(areaLayer);
+    L.marker([area.lat, area.lon], {
+      icon: L.divIcon({
+        className: "zone-icon-wrap",
+        html: zoneIconHtml(area, { selected }),
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+      }),
+      keyboard: false,
+      zIndexOffset: selected ? 1000 : 0,
+    })
       .on("click", () => (mapIsFullscreen() ? showAreaPopup(area) : selectArea(area.rank, { scroll: true })))
       .addTo(areaLayer);
   }
@@ -441,7 +537,7 @@ function renderAreas(data) {
     button.className = "area-row";
     button.setAttribute("aria-expanded", String(expanded));
     button.innerHTML = `
-      <span class="area-badge ${area.zone_type}">${area.rank}</span>
+      ${zoneIconHtml(area)}
       <span class="area-text">
         <span class="area-title">${zoneName(area)} · ${Math.round(area.distance_m)} m from the pin</span>
         <span class="area-sub">${spacesText(area)} · ${rulesText(area, data.generated_at)}</span>
@@ -628,6 +724,45 @@ $("stay").addEventListener("change", () => {
   loadNearby({ fit: false });
 });
 
+// --- Where the visitor is ------------------------------------------------------------
+// The purple arrow, as on the car map. Shown once the browser has shared a position
+// (and only inside the data's area), and kept moving while the page is open.
+let youMarker = null;
+let youHeading = 0;
+let watchId = null;
+
+function showYou(lat, lng, heading) {
+  if (Number.isFinite(heading)) youHeading = heading; // null when standing still: keep the last one
+  if (!youMarker) {
+    youMarker = L.marker([lat, lng], {
+      icon: L.divIcon({
+        className: "you-wrap",
+        html: `<div class="you-arrow">${YOU_SVG}</div>`,
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+      }),
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 2000,
+    }).addTo(map);
+  }
+  youMarker.setLatLng([lat, lng]);
+  const arrow = youMarker.getElement() && youMarker.getElement().querySelector(".you-arrow");
+  if (arrow) arrow.style.transform = `rotate(${youHeading}deg)`;
+}
+
+function watchYou() {
+  if (watchId !== null || !navigator.geolocation) return;
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      if (inZurich(here)) showYou(here.lat, here.lng, pos.coords.heading);
+    },
+    () => {},
+    { enableHighAccuracy: false, maximumAge: 15000 }
+  );
+}
+
 // --- "Use my location" ----------------------------------------------------------------
 
 function useMyLocation({ silent }) {
@@ -642,6 +777,8 @@ function useMyLocation({ silent }) {
         showStatus("You're outside Zurich, where the parking data ends. Showing central Zurich instead.");
         return;
       }
+      showYou(here.lat, here.lng, pos.coords.heading);
+      watchYou();
       state.home = here;
       state.destinationChosen = !silent;
       showStatus("");
