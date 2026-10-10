@@ -15,7 +15,15 @@ const ZURICH_CENTER = { lat: 47.3779, lng: 8.5402 };
 // A generous box around the city: the parking data covers nothing outside it.
 const ZURICH_BOUNDS = { south: 47.30, north: 47.45, west: 8.42, east: 8.66 };
 
-const map = L.map("map", { tap: false }).setView([ZURICH_CENTER.lat, ZURICH_CENTER.lng], 16);
+const map = L.map("map", { tap: false, zoomControl: false }).setView(
+  [ZURICH_CENTER.lat, ZURICH_CENTER.lng],
+  16
+);
+// Bottom-right, not Leaflet's default top-left: the usual spot for map
+// controls on mobile (Google/Apple Maps, Citymapper), reachable one-handed
+// even on a large phone -- top-left is a stretch in fullscreen on e.g. a
+// Pixel 10.
+L.control.zoom({ position: "bottomright" }).addTo(map);
 // CartoDB's "Positron" basemap: a light, minimal OSM-derived style that
 // keeps streets/labels/buildings/rail but drops the POI icon clutter
 // (restaurants, shops, etc.) of the default OSM tiles. CARTO requires an API

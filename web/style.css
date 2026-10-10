@@ -577,6 +577,16 @@ input[type="radio"] {
   color: var(--muted-fg) !important;
 }
 
+/* Leaflet's default zoom buttons are 26px -- too small to tap reliably, let
+   alone precisely, on a touchscreen. 44px matches Apple's and Android's own
+   minimum touch-target guidance. */
+.leaflet-control-zoom a {
+  width: 2.75rem !important;
+  height: 2.75rem !important;
+  line-height: 2.75rem !important;
+  font-size: 1.25rem !important;
+}
+
 /* Long result lists scroll inside their own block instead of stretching the page. */
 #upcoming {
   max-height: 11rem;
