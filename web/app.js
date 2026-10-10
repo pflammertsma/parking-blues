@@ -624,6 +624,7 @@ async function loadNearby({ fit }) {
   });
   if (state.stay) params.set("stay", String(state.stay));
   $("areas").setAttribute("aria-busy", "true");
+  showStatus("Searching for parking…");
   let data;
   try {
     data = await api(`/api/nearby?${params}`);
