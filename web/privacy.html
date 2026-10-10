@@ -18,7 +18,7 @@
       document.documentElement.setAttribute("data-theme", "dark");
     }
   </script>
-  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="style.css?v=14" />
 </head>
 <body class="legal-page">
   <header class="topbar">
@@ -31,7 +31,7 @@
 
   <main class="legal">
     <h2>Privacy Policy</h2>
-    <p class="meta">Last updated: 5 October 2026</p>
+    <p class="meta">Last updated: 10 October 2026</p>
 
     <p>
       Parking Blues helps drivers find legal on-street parking in Zurich. This policy
@@ -154,6 +154,11 @@
         database and this web page and may log requests as described above.
       </li>
       <li>
+        <strong>Address search (swisstopo).</strong> On the web page, the text you type into the
+        search box is sent to the Swiss federal geoportal to suggest addresses (see "This web
+        page" below).
+      </li>
+      <li>
         <strong>Leaflet (unpkg.com).</strong> This web page loads the Leaflet map library
         from the unpkg content delivery network, which receives your IP address when the
         page loads.
@@ -172,10 +177,24 @@
       lammertsma.dev are covered by the site's own <a href="/privacy">privacy statement</a>.
     </p>
     <p>
-      When you start a search, the web address of the page gains the searched location and
-      options (after a <code>#</code>) so the Back button works. Browsers do not send that part
-      of an address to any server, so it is not in our logs, but it is in your browser history
-      and in the link if you copy or share it.
+      <strong>Where you are.</strong> When the page opens, it asks your browser for your
+      location so it can show parking around you. If you say no (or are outside Zurich), it shows
+      central Zurich instead. The pin's position is sent to our server to look up parking, as
+      described above, and is not stored. The location the page opened with is not written into the
+      web address.
+    </p>
+    <p>
+      <strong>The address bar.</strong> When you pick a destination (drag the pin, tap the map or
+      choose an address), the web address of the page gains it and your options (after a
+      <code>#</code>) so the Back button works. Browsers do not send that part of an address to any
+      server, so it is not in our logs, but it is in your browser history and in the link if you copy
+      or share it.
+    </p>
+    <p>
+      <strong>Address search.</strong> What you type in the search box is sent from your browser to
+      swisstopo (api3.geo.admin.ch, the Swiss federal geoportal) to suggest matching addresses and
+      places, so swisstopo receives your IP address and the text you typed. See
+      <a href="https://www.geo.admin.ch/en/terms-of-use" rel="noopener">swisstopo's terms</a>.
     </p>
 
     <h3>How long data is kept</h3>

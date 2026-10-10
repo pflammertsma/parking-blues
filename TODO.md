@@ -93,6 +93,15 @@ Why it came up: the web page's drag simulator sent a position every 200 ms again
 - [ ] **Update the docs that currently promise the opposite:** `AGENTS.md` (backend as single source of truth, clients just submit GPS), `web/privacy.html` (location "about once a second"), the Play Data safety form, and this repo's README section 4.
 - [x] **Keep the web page in step:** the restyled pages, `?v=` cache-busting and the 800 ms position throttle were ported from `lammertsma-dev/public/projects/parking-blues/` into `web/` (which is the source of truth; edit it here, never in `lammertsma-dev`).
 
+## Web page (for people without the app)
+Built: parking around the visitor on open, both zones, address search (swisstopo), zone chips, stay filter, ranked areas with rules / fee / parking-disc time and a Navigate link, destination in the URL fragment. See `AGENTS.md`.
+- [ ] **Arrival time:** "I'm going at 14:00 on Saturday" (blue-zone rules depend on time and day). Needs an optional `arrive_at` on `/api/nearby` and `blue_zone_*` taking it instead of "now".
+- [ ] **Street names for areas** (also helps the car list): assign each spot its nearest street once at ingestion (`scripts/ingest_zurich_parking.py`; swisstopo or OSM), so rows say "Blue zone · Löwenstrasse" instead of a distance only.
+- [ ] **Live mode:** follow the visitor with `watchPosition` and use the existing session endpoints (rejection by driving past), for passengers and pedestrians.
+- [ ] **Installable / offline:** web app manifest, an icon, a cached shell.
+- [ ] Show blue-zone areas even when white ones outrank the first 12 (the disc card only appears if a blue area is in the list).
+- [ ] Tune `RateLimits.nearby` once there is real traffic.
+
 ## Car (Android Auto / Automotive OS)
 - [ ] **Resubmit to Play** (release 4, includes the launch-crash fix and the nearby-areas list). Re-test a fresh release install with nothing granted before each submission (`AGENTS.md` gotcha 13).
 - [ ] **Crash reporting (Firebase Crashlytics):** add to `:app` and `:automotive` (release only) so crashes in the wild, including Play review devices, show up. Needs a Firebase project (add Firebase to `parking-blues-mvp`), `google-services.json` per package (`dev.lammertsma.parkingblues` and the `.debug` one), and then: privacy policy (crash reports, installation ID), Play Data safety (crash logs, diagnostics), and `android/README.md`.

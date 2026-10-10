@@ -718,3 +718,259 @@ input[type="radio"] {
     border-radius: 16px;
   }
 }
+
+/* ---- Nearby parking: search, filters, areas ---------------------------- */
+
+.search-row {
+  position: relative;
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.search-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: 0 0.9rem;
+  font: inherit;
+  color: var(--fg);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.search-row input::placeholder {
+  color: var(--muted-fg);
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+}
+
+.icon-btn svg {
+  width: 1.3rem;
+  height: 1.3rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+#suggestions {
+  position: absolute;
+  z-index: 1100; /* above the Leaflet controls */
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--bg); /* opaque: the glass surfaces would show the map */
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+#suggestions li {
+  padding: 0.6rem 0.75rem;
+  color: var(--fg);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#suggestions li:hover,
+#suggestions li[aria-selected="true"] {
+  background: var(--surface-hover);
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.zone-filter {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.zone-filter button {
+  min-height: 2.5rem;
+  padding: 0 0.9rem;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-fg);
+}
+
+.zone-filter button:first-child {
+  border-left: none;
+}
+
+.zone-filter button[aria-pressed="true"] {
+  background: var(--accent-bg);
+  color: var(--primary);
+}
+
+.stay-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stay-filter select {
+  min-height: 2.5rem;
+}
+
+.status {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  color: var(--fg);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.disc-card {
+  margin: 0.75rem 0;
+  padding: 0.7rem 0.9rem;
+  color: var(--fg);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--zone-blue);
+  border-radius: 8px;
+}
+
+.areas-heading {
+  margin: 1.1rem 0 0.4rem;
+  font-size: 1rem;
+  color: var(--muted-fg);
+  font-weight: 600;
+}
+
+.areas {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.areas[aria-busy="true"] {
+  opacity: 0.55;
+}
+
+.area {
+  margin-bottom: 0.5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.area-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  min-height: 3.6rem;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.area-row:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.area-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.area-title {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.area-sub {
+  color: var(--muted-fg);
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+.area-details {
+  padding: 0.2rem 0.8rem 0.8rem;
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0 1.4rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+}
+
+.button-link.primary {
+  background: var(--primary);
+  border-color: transparent;
+  color: #fff;
+}
+
+.area-badge-wrap {
+  background: none;
+  border: none;
+}
+
+.area-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+.area-badge.blue {
+  background: var(--zone-blue);
+  color: #fff;
+}
+
+.area-badge.white {
+  background: #f1f5f9;
+  color: #1a1a1a;
+}
+
+.area-badge.selected {
+  transform: scale(1.2);
+  border-color: var(--primary);
+}
+
+@media (max-width: 600px) {
+  #map {
+    height: clamp(240px, 38vh, 380px);
+  }
+}

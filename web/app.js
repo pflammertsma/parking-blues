@@ -1,7 +1,3 @@
-let sessionId = null;
-
-const DEFAULT_ORIGIN = { lat: 47.379198, lon: 8.531307 };
-
 const $ = (id) => document.getElementById(id);
 
 // When this page is served as static files from lammertsma.dev (e.g.
@@ -13,7 +9,13 @@ const API_BASE = window.location.hostname.endsWith("lammertsma.dev")
   ? "https://api.parking-blues.lammertsma.dev"
   : "";
 
-const map = L.map("map").setView([DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lon], 16);
+// Zurich Hauptbahnhof: what the page shows until (or unless) it learns where
+// the visitor is, so it is never empty.
+const ZURICH_CENTER = { lat: 47.3779, lng: 8.5402 };
+// A generous box around the city: the parking data covers nothing outside it.
+const ZURICH_BOUNDS = { south: 47.30, north: 47.45, west: 8.42, east: 8.66 };
+
+const map = L.map("map", { tap: false }).setView([ZURICH_CENTER.lat, ZURICH_CENTER.lng], 16);
 // CartoDB's "Positron" basemap: a light, minimal OSM-derived style that
 // keeps streets/labels/buildings/rail but drops the POI icon clutter
 // (restaurants, shops, etc.) of the default OSM tiles. CARTO requires an API
@@ -28,8 +30,12 @@ L.tileLayer(
   }
 ).addTo(map);
 
-const originMarker = L.marker([DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lon], {
+// The destination: where the visitor wants to be. Everything shown is
+// relative to it; moving it (drag, tap on the map, address search, "my
+// location") is the one way to change the answer.
+const destinationMarker = L.marker([ZURICH_CENTER.lat, ZURICH_CENTER.lng], {
   draggable: true,
+  keyboard: false,
 }).addTo(map).bindTooltip("Destination", {
   permanent: true,
   direction: "top",
@@ -37,148 +43,7 @@ const originMarker = L.marker([DEFAULT_ORIGIN.lat, DEFAULT_ORIGIN.lon], {
   // and low on the head; shift the label to sit centred just above the pin.
   offset: [-16, -14],
 });
-
-const youIcon = L.divIcon({
-  className: "you-marker",
-  html: '<div class="you-dot"></div>',
-  iconSize: [16, 16],
-});
-let youMarker = null;
-let radiusCircle = null;
-let candidateLayer = L.layerGroup().addTo(map);
-
-const SETUP_HINT = "Drag the pin to where you're headed, or use your location.";
-const SESSION_HINT =
-  "Drag the red dot to update where you are. Spots you pass without stopping are skipped, and a closer spot becomes the best one as you approach it.";
-
-// Shows (or, with no message, clears) a short notice under the map.
-function showStatus(message) {
-  const el = $("status");
-  el.textContent = message || "";
-  el.hidden = !message;
-}
-
-function selectedZone() {
-  return document.querySelector('input[name="zone"]:checked').value;
-}
-
-function selectedDuration() {
-  const value = $("duration").value;
-  return value ? parseInt(value, 10) : null;
-}
-
-function formatDuration(segment) {
-  if (segment.zone_type === "blue") {
-    if (!segment.legal_until) {
-      // Sundays (and, not modeled, public holidays) are unrestricted.
-      return "no time limit right now";
-    }
-    const until = new Date(segment.legal_until);
-    const label = until.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    return `park until ~${label} (set your disc)`;
-  }
-  const cap = segment.max_duration_minutes
-    ? `${segment.max_duration_minutes} min max`
-    : "no fixed limit";
-  const rate = segment.estimated_fee_chf_per_hour;
-  return rate ? `${cap} &middot; ~CHF ${rate.toFixed(2)}/h (rough estimate)` : cap;
-}
-
-// Shared by the "current target" card and the map popups (candidateMarker/
-// rejectedMarker below) so a spot shows the same information everywhere
-// it's shown, not a trimmed-down version in one place and not the other.
-function segmentDetailsHtml(segment) {
-  const zoneClass = segment.zone_type === "blue" ? "zone-blue" : "zone-white";
-  const duration = formatDuration(segment);
-  // distance_from_you_m (live, from the driver) is what matters moment to
-  // moment while driving; distance_m (fixed, from the destination) is kept
-  // as context so a target's "am I actually headed the right way" story
-  // doesn't disappear -- see the "why far away" note this replaced.
-  return `
-    <div class="${zoneClass}">${segment.zone_type.toUpperCase()} ZONE</div>
-    <div>${segment.address_label}</div>
-    <div>${segment.distance_from_you_m} m from you (${segment.distance_m} m from destination) &middot; capacity ~${segment.estimated_capacity} &middot; ${duration}</div>
-  `;
-}
-
-function renderSegment(container, segment) {
-  if (!segment) {
-    container.textContent = "No candidates.";
-    return;
-  }
-  container.innerHTML = segmentDetailsHtml(segment);
-}
-
-// Marker colors come from style.css (.spot-blue / .spot-white / .spot-rejected)
-// so they can follow the light/dark theme; only geometry is set here.
-function candidateMarker(segment, highlighted) {
-  return L.circleMarker([segment.lat, segment.lon], {
-    className: segment.zone_type === "blue" ? "spot-blue" : "spot-white",
-    radius: highlighted ? 10 : 6,
-    fillOpacity: highlighted ? 0.9 : 0.4,
-    weight: highlighted ? 3 : 1,
-  }).bindPopup(`<div class="popup-card">${segmentDetailsHtml(segment)}</div>`);
-}
-
-function rejectedMarker(segment) {
-  return L.circleMarker([segment.lat, segment.lon], {
-    className: "spot-rejected",
-    radius: 6,
-    fillOpacity: 0.5,
-    weight: 1,
-  }).bindPopup(
-    `<div class="popup-card">${segmentDetailsHtml(segment)}<div class="popup-note">No space -- already checked</div></div>`
-  );
-}
-
-function renderMap(data) {
-  candidateLayer.clearLayers();
-  // Draw already-checked spots first (and dimmed) so they sit visually
-  // behind the still-live candidates instead of competing with them.
-  for (const segment of data.rejected) {
-    rejectedMarker(segment).addTo(candidateLayer);
-  }
-  if (data.current) {
-    candidateMarker(data.current, true).addTo(candidateLayer);
-  }
-  for (const segment of data.upcoming) {
-    candidateMarker(segment, false).addTo(candidateLayer);
-  }
-
-  if (radiusCircle) {
-    radiusCircle.setLatLng([data.origin.lat, data.origin.lon]);
-    radiusCircle.setRadius(data.radius_m);
-  } else {
-    radiusCircle = L.circle([data.origin.lat, data.origin.lon], {
-      radius: data.radius_m,
-      color: "#888",
-      fill: false,
-      dashArray: "4 4",
-    }).addTo(map);
-  }
-}
-
-function render(data) {
-  renderSegment($("current"), data.current);
-  renderMap(data);
-
-  $("duration-readout").textContent = data.preferred_duration_minutes
-    ? `Only showing spots you can stay at for at least ${data.preferred_duration_minutes} min, right now.`
-    : "";
-
-  const exhausted = data.state === "exhausted";
-  $("exhausted").hidden = !exhausted;
-
-  const list = $("upcoming");
-  list.innerHTML = "";
-  for (const segment of data.upcoming) {
-    const li = document.createElement("li");
-    const zone = segment.zone_type === "blue" ? "Blue" : "White";
-    li.textContent = `${segment.address_label} · ${zone} zone · ${segment.distance_from_you_m} m`;
-    list.appendChild(li);
-  }
-  $("alternatives").hidden = data.upcoming.length === 0;
-}
+const areaLayer = L.layerGroup().addTo(map);
 
 async function api(path, options = {}) {
   const send = (token) =>
@@ -429,192 +294,506 @@ $("delete-account").addEventListener("click", async () => {
 renderAccount();
 if (auth) refreshAccessToken();
 
-$("use-geolocation").addEventListener("click", () => {
-  if (!navigator.geolocation) {
-    showStatus("Your browser can't share your location.");
+// --- Parking near the destination -----------------------------------------------
+// The page answers the moment it opens: parking around where the visitor is (or
+// central Zurich), both zones, no questions asked. Zone, stay length, address
+// search and the pin only exist to correct that answer. All ranking and rules
+// come from the server (GET /api/nearby); this code only draws them.
+
+const ZONES = ["both", "blue", "white"];
+const state = {
+  destination: { ...ZURICH_CENTER },
+  zone: "both",
+  stay: null, // minutes, or null for "any"
+  areas: [],
+  selected: null, // rank of the expanded area
+  // Where the page opened (the visitor's location or central Zurich): what
+  // Back returns to once the history holds no destination of its own.
+  home: { ...ZURICH_CENTER },
+};
+let requestSeq = 0;
+state.destinationChosen = false; // true once the visitor has picked a destination
+
+function inZurich({ lat, lng }) {
+  return lat >= ZURICH_BOUNDS.south && lat <= ZURICH_BOUNDS.north &&
+    lng >= ZURICH_BOUNDS.west && lng <= ZURICH_BOUNDS.east;
+}
+
+// Why the list is empty: a filter the visitor chose, or the pin being outside the data.
+function emptyMessage() {
+  if (state.zone !== "both" || state.stay) {
+    const zone = state.zone === "both" ? "" : `${state.zone} zone `;
+    const stay = state.stay ? ` that allow a ${formatMinutes(state.stay)} stay` : "";
+    return `No ${zone}parking within 1 km of the pin${stay}. Try all zones or a shorter stay` +
+      (state.zone === "blue" && state.stay > 90 ? " (blue zones allow about 1 to 1.5 hours)." : ".");
+  }
+  return "No public parking found within 1 km of the pin. The data covers the city of Zurich: " +
+    "move the pin or search an address.";
+}
+
+// Shows (or, with no message, clears) a short notice under the map.
+function showStatus(message) {
+  const el = $("status");
+  el.textContent = message || "";
+  el.hidden = !message;
+}
+
+// --- Rules, as words -------------------------------------------------------------
+
+function hhmm(iso) {
+  return iso.substring(11, 16);
+}
+
+// "11:30", or "tomorrow 09:00" when the time falls on a later date than `nowIso`.
+function clockLabel(iso, nowIso) {
+  return iso.substring(0, 10) === nowIso.substring(0, 10) ? hhmm(iso) : `tomorrow ${hhmm(iso)}`;
+}
+
+function formatMinutes(minutes) {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = minutes / 60;
+  return Number.isInteger(hours) ? `${hours} h` : `${hours.toFixed(1)} h`;
+}
+
+function zoneName(area) {
+  return area.zone_type === "blue" ? "Blue zone" : "White zone";
+}
+
+function spacesText(area) {
+  return `~${area.capacity} space${area.capacity === 1 ? "" : "s"}`;
+}
+
+// What the visitor needs to know to park here, for this area right now.
+function rulesText(area, nowIso) {
+  if (area.zone_type === "blue") {
+    if (area.disc_mark) {
+      return `Set your disc to ${hhmm(area.disc_mark)} · park until ${clockLabel(area.legal_until, nowIso)}`;
+    }
+    return area.legal_until
+      ? `No disc needed now · free until ${clockLabel(area.legal_until, nowIso)}`
+      : "No time limit right now";
+  }
+  const parts = [area.max_duration_minutes ? `${formatMinutes(area.max_duration_minutes)} max` : "no fixed limit"];
+  const rate = area.estimated_fee_chf_per_hour;
+  if (rate) {
+    parts.push(`~CHF ${rate.toFixed(2)}/h`);
+    if (state.stay) parts.push(`~CHF ${(rate * state.stay / 60).toFixed(2)} for ${formatMinutes(state.stay)}`);
+  }
+  return parts.join(" · ");
+}
+
+// Opens the visitor's navigation app on the area: Apple Maps on iOS, otherwise
+// Google Maps (which hands over to the app on Android).
+function navigateUrl(area) {
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const target = `${area.lat},${area.lon}`;
+  return ios
+    ? `https://maps.apple.com/?daddr=${target}&dirflg=d`
+    : `https://www.google.com/maps/dir/?api=1&destination=${target}&travelmode=driving`;
+}
+
+// --- Drawing -----------------------------------------------------------------------
+
+function badgeIcon(area, selected) {
+  return L.divIcon({
+    className: "area-badge-wrap",
+    html: `<span class="area-badge ${area.zone_type}${selected ? " selected" : ""}">${area.rank}</span>`,
+    iconSize: [28, 28],
+  });
+}
+
+function drawMap(fit) {
+  areaLayer.clearLayers();
+  // Weakest first so the best areas end up on top.
+  for (const area of [...state.areas].reverse()) {
+    const selected = area.rank === state.selected;
+    for (const [lat, lon] of area.spots) {
+      L.circleMarker([lat, lon], {
+        className: area.zone_type === "blue" ? "spot-blue" : "spot-white",
+        radius: selected ? 7 : 5,
+        fillOpacity: selected ? 0.95 : 0.55,
+        weight: selected ? 3 : 1,
+        interactive: false,
+      }).addTo(areaLayer);
+    }
+    L.marker([area.lat, area.lon], { icon: badgeIcon(area, selected), keyboard: false, zIndexOffset: selected ? 1000 : 0 })
+      .on("click", () => selectArea(area.rank, { scroll: true }))
+      .addTo(areaLayer);
+  }
+  if (fit && state.areas.length) {
+    const points = [[state.destination.lat, state.destination.lng]];
+    for (const area of state.areas.slice(0, 5)) points.push([area.lat, area.lon]);
+    map.fitBounds(L.latLngBounds(points), { padding: [36, 36], maxZoom: 17 });
+  }
+}
+
+function renderAreas(data) {
+  const list = $("areas");
+  list.innerHTML = "";
+  for (const area of state.areas) {
+    const li = document.createElement("li");
+    li.className = `area ${area.zone_type}`;
+    li.dataset.rank = String(area.rank);
+    const expanded = area.rank === state.selected;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "area-row";
+    button.setAttribute("aria-expanded", String(expanded));
+    button.innerHTML = `
+      <span class="area-badge ${area.zone_type}">${area.rank}</span>
+      <span class="area-text">
+        <span class="area-title">${zoneName(area)} · ${Math.round(area.distance_m)} m from the pin</span>
+        <span class="area-sub">${spacesText(area)} · ${rulesText(area, data.generated_at)}</span>
+      </span>`;
+    button.addEventListener("click", () => selectArea(expanded ? null : area.rank, { scroll: false }));
+    li.appendChild(button);
+    if (expanded) {
+      const details = document.createElement("div");
+      details.className = "area-details";
+      const nav = document.createElement("a");
+      nav.className = "button-link primary";
+      nav.href = navigateUrl(area);
+      nav.target = "_blank";
+      nav.rel = "noopener";
+      nav.textContent = "Navigate";
+      details.appendChild(nav);
+      li.appendChild(details);
+    }
+    list.appendChild(li);
+  }
+}
+
+// The one thing worth saying about blue zones, once, at the top: what to do
+// with the parking disc right now.
+function renderDisc(data) {
+  const card = $("disc");
+  const blue = state.areas.find((area) => area.zone_type === "blue");
+  if (!blue) {
+    card.hidden = true;
     return;
   }
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      const { latitude, longitude } = pos.coords;
-      originMarker.setLatLng([latitude, longitude]);
-      map.setView([latitude, longitude], 16);
-      showStatus("");
-    },
-    () => showStatus("Couldn't get your location. Allow location access, or drag the pin instead.")
-  );
-});
+  const now = data.generated_at;
+  card.innerHTML = blue.disc_mark
+    ? `<strong>Parking disc:</strong> set it to <strong>${hhmm(blue.disc_mark)}</strong>. You may park until ${clockLabel(blue.legal_until, now)}.`
+    : `<strong>Parking disc:</strong> not needed right now. ` +
+      (blue.legal_until ? `Move your car by ${clockLabel(blue.legal_until, now)}.` : "There is no time limit at the moment.");
+  card.hidden = false;
+}
 
-// --- The search lives in the address bar ---------------------------------------
-// Starting a search adds a history entry whose URL carries the search, e.g.
-// #lat=47.37921&lng=8.53131&zone=both&stay=60, so Back returns to the form with
-// the same pin, Forward (or a reload, or a shared link) runs the search again.
-// It is the URL *fragment*, not a query string: browsers never send it to a
-// server, so the coordinates stay out of hosting and API logs.
-const ZONES = ["blue", "white", "both"];
-// Whether the current history entry is one this page added (so Back stays on
-// the page). False for an entry the visitor opened directly.
-let searchEntryPushed = false;
+function render(data, { fit }) {
+  state.areas = data.areas;
+  if (!state.areas.some((area) => area.rank === state.selected)) state.selected = null;
 
-function searchHash({ lat, lng, zone, duration_minutes }) {
-  const params = new URLSearchParams({ lat: lat.toFixed(5), lng: lng.toFixed(5), zone });
-  if (duration_minutes) params.set("stay", String(duration_minutes));
+  if (state.areas.length) {
+    const radius = data.radius_m >= 1000 ? `${data.radius_m / 1000} km` : `${Math.round(data.radius_m)} m`;
+    showStatus("");
+    $("summary").textContent = `${state.areas.length} area${state.areas.length === 1 ? "" : "s"} within ${radius} of the pin`;
+  } else {
+    $("summary").textContent = "";
+    showStatus(emptyMessage());
+  }
+  renderDisc(data);
+  renderAreas(data);
+  drawMap(fit);
+}
+
+function selectArea(rank, { scroll }) {
+  state.selected = rank;
+  const area = state.areas.find((a) => a.rank === rank);
+  renderAreas({ generated_at: lastGeneratedAt });
+  drawMap(false);
+  if (area && scroll) {
+    document.querySelector(`.area[data-rank="${rank}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  if (area) map.panTo([area.lat, area.lon]);
+}
+
+let lastGeneratedAt = new Date().toISOString();
+
+async function loadNearby({ fit }) {
+  const seq = ++requestSeq;
+  const params = new URLSearchParams({
+    lat: state.destination.lat.toFixed(6),
+    lon: state.destination.lng.toFixed(6),
+    zone: state.zone,
+  });
+  if (state.stay) params.set("stay", String(state.stay));
+  $("areas").setAttribute("aria-busy", "true");
+  let data;
+  try {
+    data = await api(`/api/nearby?${params}`);
+  } catch (err) {
+    if (seq !== requestSeq) return;
+    $("areas").removeAttribute("aria-busy");
+    showStatus(`Couldn't load parking: ${err.message}`);
+    return;
+  }
+  if (seq !== requestSeq) return; // the visitor has moved on
+  $("areas").removeAttribute("aria-busy");
+  lastGeneratedAt = data.generated_at;
+  render(data, { fit });
+}
+
+// --- Changing the destination --------------------------------------------------------
+
+// The search in the address, e.g. #lat=47.37921&lng=8.53131&zone=blue&stay=60:
+// every destination the visitor picks is a history entry, so Back returns to the
+// previous one and a link carries the search. It is the URL *fragment*, which
+// browsers never send to a server, so it stays out of hosting and API logs. The
+// location the page opens with is deliberately not written into the address.
+function searchHash() {
+  const params = new URLSearchParams({
+    lat: state.destination.lat.toFixed(5),
+    lng: state.destination.lng.toFixed(5),
+  });
+  if (state.zone !== "both") params.set("zone", state.zone);
+  if (state.stay) params.set("stay", String(state.stay));
   return `#${params}`;
 }
 
-// The search in the URL, or null when there is none or it is malformed.
 function parseSearchHash() {
   const params = new URLSearchParams(window.location.hash.slice(1));
   const lat = parseFloat(params.get("lat"));
   const lng = parseFloat(params.get("lng"));
-  const zone = params.get("zone");
-  const stay = params.get("stay");
-  if (!(Math.abs(lat) <= 90) || !(Math.abs(lng) <= 180) || !ZONES.includes(zone)) return null;
-  const duration_minutes = stay ? parseInt(stay, 10) : null;
-  if (stay && !(duration_minutes > 0)) return null;
-  return { lat, lng, zone, duration_minutes };
+  if (!(Math.abs(lat) <= 90) || !(Math.abs(lng) <= 180)) return null;
+  const zone = params.get("zone") || "both";
+  const stayRaw = params.get("stay");
+  const stay = stayRaw ? parseInt(stayRaw, 10) : null;
+  if (!ZONES.includes(zone) || (stayRaw && !(stay > 0))) return null;
+  return { lat, lng, zone, stay };
 }
 
-// Puts a search's values back into the form and onto the map.
-function applySearchToForm({ lat, lng, zone, duration_minutes }) {
-  originMarker.setLatLng([lat, lng]);
-  map.setView([lat, lng], 16);
-  document.querySelector(`input[name="zone"][value="${zone}"]`).checked = true;
-  $("duration").value = duration_minutes ? String(duration_minutes) : "";
+function syncControls() {
+  for (const button of document.querySelectorAll("#zone-filter button")) {
+    button.setAttribute("aria-pressed", String(button.dataset.zone === state.zone));
+  }
+  $("stay").value = state.stay ? String(state.stay) : "";
 }
 
-async function startSearch({ lat, lng, zone, duration_minutes }, pushHistory) {
-  if (sessionId) return; // a search is already running
-  let data;
-  try {
-    data = await api("/api/session", {
-      method: "POST",
-      body: JSON.stringify({ lat, lon: lng, zone, duration_minutes }),
-    });
-  } catch (err) {
-    showStatus(`Couldn't start the search: ${err.message}`);
-    return;
+// Moves the destination and refreshes. `push` adds a history entry.
+function setDestination({ lat, lng }, { label = "", push = true, fit = true } = {}) {
+  state.destination = { lat, lng };
+  state.selected = null;
+  destinationMarker.setLatLng([lat, lng]);
+  $("search").value = label;
+  if (push) {
+    state.destinationChosen = true;
+    history.pushState({ zone: state.zone, stay: state.stay }, "", searchHash());
   }
-  showStatus("");
-  sessionId = data.session_id;
-  if (pushHistory) {
-    history.pushState({ search: true }, "", searchHash({ lat, lng, zone, duration_minutes }));
-    searchEntryPushed = true;
-  }
-  $("setup").hidden = true;
-  $("session").hidden = false;
-  $("reset").hidden = false;
-  $("map-hint").textContent = SESSION_HINT;
-
-  originMarker.dragging.disable();
-  youMarker = L.marker([lat, lng], { draggable: true, icon: youIcon })
-    .addTo(map)
-    .bindTooltip("You (drag to simulate driving)", { direction: "top" });
-
-  // Post position updates continuously while dragging (not just on drop) so
-  // the approach/depart auto-rejection and live retargeting behave like an
-  // actual drive-by instead of needing repeated discrete drops. Throttled
-  // by both a time interval and an in-flight guard so drag ticks don't pile
-  // up requests; dragend always sends the final position.
-  // The server allows 90 position updates per minute per session (one every
-  // ~667 ms), so stay safely under it: faster than that and it answers 429
-  // and silently stops processing the drag.
-  const POSITION_UPDATE_INTERVAL_MS = 800;
-  let positionRequestInFlight = false;
-  let lastPositionSentAt = 0;
-
-  async function sendPosition(pos) {
-    if (positionRequestInFlight) return;
-    positionRequestInFlight = true;
-    lastPositionSentAt = Date.now();
-    try {
-      const body = await api(`/api/session/${sessionId}/position`, {
-        method: "POST",
-        body: JSON.stringify({ lat: pos.lat, lon: pos.lng }),
-      });
-      render(body);
-      showStatus("");
-    } catch (err) {
-      showStatus(`Couldn't update your position: ${err.message}`);
-    } finally {
-      positionRequestInFlight = false;
-    }
-  }
-
-  youMarker.on("drag", () => {
-    if (Date.now() - lastPositionSentAt < POSITION_UPDATE_INTERVAL_MS) return;
-    sendPosition(youMarker.getLatLng());
-  });
-  youMarker.on("dragend", () => sendPosition(youMarker.getLatLng()));
-
-  render(data);
+  if (fit) map.setView([lat, lng], Math.max(map.getZoom(), 16));
+  loadNearby({ fit: true });
 }
 
-$("start").addEventListener("click", () => {
-  const { lat, lng } = originMarker.getLatLng();
-  startSearch({ lat, lng, zone: selectedZone(), duration_minutes: selectedDuration() }, true);
+destinationMarker.on("dragend", () => {
+  const { lat, lng } = destinationMarker.getLatLng();
+  setDestination({ lat, lng }, { fit: false });
+});
+map.on("click", (event) => {
+  setDestination({ lat: event.latlng.lat, lng: event.latlng.lng }, { fit: false });
 });
 
-$("expand").addEventListener("click", async () => {
-  try {
-    render(await api(`/api/session/${sessionId}/expand`, { method: "POST" }));
-    showStatus("");
-  } catch (err) {
-    showStatus(`Couldn't widen the search: ${err.message}`);
-  }
-});
-
-function resetSearch() {
-  sessionId = null;
-  searchEntryPushed = false;
-  if (youMarker) {
-    map.removeLayer(youMarker);
-    youMarker = null;
-  }
-  candidateLayer.clearLayers();
-  if (radiusCircle) {
-    map.removeLayer(radiusCircle);
-    radiusCircle = null;
-  }
-  originMarker.dragging.enable();
-  $("duration-readout").textContent = "";
-  $("exhausted").hidden = true;
-  $("session").hidden = true;
-  $("reset").hidden = true;
-  $("setup").hidden = false;
-  $("map-hint").textContent = SETUP_HINT;
-  showStatus("");
-}
-
-// "New search" is the same as Back when this page added the history entry;
-// otherwise (a search opened from a link) just clear it from the address.
-$("reset").addEventListener("click", () => {
-  if (searchEntryPushed) {
-    history.back();
-  } else {
-    history.replaceState(null, "", window.location.pathname + window.location.search);
-    resetSearch();
-  }
-});
-
-// Back and Forward: leave the search for the form, or run the search again.
 window.addEventListener("popstate", (event) => {
   const search = parseSearchHash();
-  if (sessionId) resetSearch();
-  if (search) {
-    applySearchToForm(search);
-    startSearch(search, false).then(() => {
-      searchEntryPushed = !!(event.state && event.state.search);
+  // An entry without a destination in its address is where the page opened; the
+  // filters the visitor had set there are kept in the entry's state.
+  const saved = event.state || {};
+  const target = search || { ...state.home, zone: saved.zone || "both", stay: saved.stay || null };
+  state.zone = target.zone;
+  state.stay = target.stay;
+  syncControls();
+  setDestination({ lat: target.lat, lng: target.lng }, { push: false });
+});
+
+// --- Zone and stay ----------------------------------------------------------------------
+
+for (const button of document.querySelectorAll("#zone-filter button")) {
+  button.addEventListener("click", () => {
+    if (state.zone === button.dataset.zone) return;
+    state.zone = button.dataset.zone;
+    syncControls();
+    history.replaceState({ zone: state.zone, stay: state.stay }, "", state.destinationChosen ? searchHash() : window.location.href);
+    loadNearby({ fit: false });
+  });
+}
+
+$("stay").addEventListener("change", () => {
+  state.stay = $("stay").value ? parseInt($("stay").value, 10) : null;
+  history.replaceState({ zone: state.zone, stay: state.stay }, "", state.destinationChosen ? searchHash() : window.location.href);
+  loadNearby({ fit: false });
+});
+
+// --- "Use my location" ----------------------------------------------------------------
+
+function useMyLocation({ silent }) {
+  if (!navigator.geolocation) {
+    if (!silent) showStatus("Your browser can't share your location. Search an address or drag the pin.");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      if (!inZurich(here)) {
+        showStatus("You're outside Zurich, where the parking data ends. Showing central Zurich instead.");
+        return;
+      }
+      state.home = here;
+      state.destinationChosen = !silent;
+      showStatus("");
+      setDestination(here, { label: "", push: !silent, fit: true });
+    },
+    () => {
+      if (!silent) showStatus("Couldn't get your location. Allow location access, or search an address.");
+    },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+  );
+}
+
+$("use-geolocation").addEventListener("click", () => useMyLocation({ silent: false }));
+
+// --- Address search (swisstopo) --------------------------------------------------------
+// Swiss addresses and place names, free and without a key. The query goes straight
+// from the browser to swisstopo (see the privacy policy); a box around Zurich keeps
+// "Bahnhofstrasse" from returning every town's.
+
+const SEARCH_URL = "https://api3.geo.admin.ch/rest/services/api/SearchServer";
+const SEARCH_BBOX = "2672000,1239000,2692000,1256000"; // LV95, around the city
+let suggestions = [];
+let activeSuggestion = -1;
+let suggestTimer = null;
+let suggestSeq = 0;
+
+function stripTags(html) {
+  return html.replace(/<[^>]*>/g, "");
+}
+
+function hideSuggestions() {
+  suggestions = [];
+  activeSuggestion = -1;
+  $("suggestions").hidden = true;
+  $("suggestions").innerHTML = "";
+  $("search").setAttribute("aria-expanded", "false");
+}
+
+function showSuggestions() {
+  const list = $("suggestions");
+  list.innerHTML = "";
+  suggestions.forEach((suggestion, index) => {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", String(index === activeSuggestion));
+    li.textContent = suggestion.label;
+    // mousedown, not click: the input's blur would hide the list before a click lands.
+    li.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      chooseSuggestion(index);
     });
+    list.appendChild(li);
+  });
+  list.hidden = suggestions.length === 0;
+  $("search").setAttribute("aria-expanded", String(suggestions.length > 0));
+}
+
+function chooseSuggestion(index) {
+  const suggestion = suggestions[index];
+  if (!suggestion) return;
+  hideSuggestions();
+  state.destinationChosen = true;
+  setDestination({ lat: suggestion.lat, lng: suggestion.lng }, { label: suggestion.label });
+  $("search").blur();
+}
+
+async function fetchSuggestions(query) {
+  const seq = ++suggestSeq;
+  const params = new URLSearchParams({
+    searchText: query,
+    type: "locations",
+    origins: "address,gazetteer,zipcode",
+    sr: "2056",
+    bbox: SEARCH_BBOX,
+    limit: "6",
+  });
+  try {
+    const response = await fetch(`${SEARCH_URL}?${params}`);
+    if (!response.ok) throw new Error(String(response.status));
+    const data = await response.json();
+    if (seq !== suggestSeq) return;
+    suggestions = (data.results || [])
+      .filter((r) => r.attrs && Number.isFinite(r.attrs.lat) && Number.isFinite(r.attrs.lon))
+      .map((r) => ({ label: stripTags(r.attrs.label), lat: r.attrs.lat, lng: r.attrs.lon }));
+    activeSuggestion = suggestions.length ? 0 : -1;
+    showSuggestions();
+    if (!suggestions.length) showStatus(`Nothing found for "${query}". Try a street and number, or a place name.`);
+  } catch (err) {
+    if (seq !== suggestSeq) return;
+    hideSuggestions();
+    showStatus("Address search isn't available right now. Drag the pin or tap the map instead.");
+  }
+}
+
+$("search").addEventListener("input", () => {
+  clearTimeout(suggestTimer);
+  const query = $("search").value.trim();
+  if (query.length < 3) {
+    suggestSeq++;
+    hideSuggestions();
+    return;
+  }
+  suggestTimer = setTimeout(() => fetchSuggestions(query), 250);
+});
+
+$("search").addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown" && suggestions.length) {
+    event.preventDefault();
+    activeSuggestion = (activeSuggestion + 1) % suggestions.length;
+    showSuggestions();
+  } else if (event.key === "ArrowUp" && suggestions.length) {
+    event.preventDefault();
+    activeSuggestion = (activeSuggestion - 1 + suggestions.length) % suggestions.length;
+    showSuggestions();
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    if (suggestions.length) chooseSuggestion(Math.max(activeSuggestion, 0));
+  } else if (event.key === "Escape") {
+    hideSuggestions();
   }
 });
 
-// Opened (or reloaded) with a search in the address: run it.
-const initialSearch = parseSearchHash();
-if (initialSearch) {
-  applySearchToForm(initialSearch);
-  startSearch(initialSearch, false);
+$("search").addEventListener("blur", () => setTimeout(hideSuggestions, 150));
+
+// --- Opening the page: answer first ------------------------------------------------------
+
+async function start() {
+  const fromLink = parseSearchHash();
+  if (fromLink) {
+    // A link (or a reload) carries a destination: use it, and ask for nothing.
+    state.zone = fromLink.zone;
+    state.stay = fromLink.stay;
+    state.destinationChosen = true;
+    syncControls();
+    state.destination = { lat: fromLink.lat, lng: fromLink.lng };
+    destinationMarker.setLatLng([fromLink.lat, fromLink.lng]);
+    map.setView([fromLink.lat, fromLink.lng], 16);
+    loadNearby({ fit: true });
+    return;
+  }
+
+  // Otherwise answer straight away for central Zurich, and refine to where the
+  // visitor actually is as soon as the browser tells us (skipped if they have
+  // already said no, so nobody is nagged).
+  syncControls();
+  loadNearby({ fit: true });
+  let permission = "prompt";
+  try {
+    permission = (await navigator.permissions.query({ name: "geolocation" })).state;
+  } catch (e) {
+    // The Permissions API is not available everywhere; asking is still fine.
+  }
+  if (permission !== "denied") useMyLocation({ silent: true });
 }
+
+start();
+
 
 // Theme: "light" / "dark" force a choice regardless of OS setting; "system"
 // (the default) defers to prefers-color-scheme, handled in style.css.
