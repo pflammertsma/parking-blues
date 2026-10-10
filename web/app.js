@@ -418,7 +418,7 @@ function drawMap(fit) {
       }).addTo(areaLayer);
     }
     L.marker([area.lat, area.lon], { icon: badgeIcon(area, selected), keyboard: false, zIndexOffset: selected ? 1000 : 0 })
-      .on("click", () => selectArea(area.rank, { scroll: true }))
+      .on("click", () => (mapIsFullscreen() ? showAreaPopup(area) : selectArea(area.rank, { scroll: true })))
       .addTo(areaLayer);
   }
   if (fit && state.areas.length) {
@@ -594,6 +594,11 @@ map.on("click", (event) => {
 });
 
 window.addEventListener("popstate", (event) => {
+  // Back out of the overlay map: leave full screen, keep the destination.
+  if (pseudoFullscreen) {
+    leavePseudoFullscreen();
+    return;
+  }
   const search = parseSearchHash();
   // An entry without a destination in its address is where the page opened; the
   // filters the visitor had set there are kept in the entry's state.
@@ -760,6 +765,111 @@ $("search").addEventListener("keydown", (event) => {
 });
 
 $("search").addEventListener("blur", () => setTimeout(hideSuggestions, 150));
+
+// --- Full-screen map -------------------------------------------------------------
+// The real Fullscreen API where the browser allows it (no margins, no browser
+// toolbar). iPhone Safari only does that for video, so there (or if the request
+// is refused) the map instead fills the whole viewport as an overlay; Back and
+// Escape leave it, as the on-map button does.
+
+const mapEl = $("map");
+let pseudoFullscreen = false;
+let fullscreenLink = null;
+
+const ICON_ENTER = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>';
+const ICON_EXIT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></svg>';
+
+function nativeFullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function mapIsFullscreen() {
+  return pseudoFullscreen || nativeFullscreenElement() === mapEl;
+}
+
+function refreshFullscreenUi() {
+  const on = mapIsFullscreen();
+  if (fullscreenLink) {
+    fullscreenLink.innerHTML = on ? ICON_EXIT : ICON_ENTER;
+    const label = on ? "Exit full screen" : "Full screen map";
+    fullscreenLink.title = label;
+    fullscreenLink.setAttribute("aria-label", label);
+  }
+  document.body.classList.toggle("map-fullscreen-open", pseudoFullscreen);
+  if (!on) map.closePopup();
+  // The container changed size: let Leaflet re-measure once the layout has settled.
+  setTimeout(() => map.invalidateSize(), 60);
+}
+
+async function enterFullscreen() {
+  const request = mapEl.requestFullscreen || mapEl.webkitRequestFullscreen;
+  if (request) {
+    try {
+      await request.call(mapEl);
+      return; // fullscreenchange updates the UI
+    } catch (e) {
+      // Refused (no user gesture, policy): use the overlay instead.
+    }
+  }
+  pseudoFullscreen = true;
+  mapEl.classList.add("map-fullscreen");
+  // A history entry, so the phone's Back button leaves full screen rather than the page.
+  history.pushState({ ...(history.state || {}), fullscreen: true }, "", window.location.href);
+  refreshFullscreenUi();
+}
+
+function leavePseudoFullscreen() {
+  pseudoFullscreen = false;
+  mapEl.classList.remove("map-fullscreen");
+  refreshFullscreenUi();
+}
+
+function exitFullscreen() {
+  if (nativeFullscreenElement()) {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  } else if (pseudoFullscreen) {
+    if (history.state && history.state.fullscreen) history.back(); // popstate leaves it
+    else leavePseudoFullscreen();
+  }
+}
+
+const FullscreenControl = L.Control.extend({
+  options: { position: "topright" },
+  onAdd() {
+    const bar = L.DomUtil.create("div", "leaflet-bar leaflet-control fullscreen-control");
+    const link = L.DomUtil.create("a", "", bar);
+    link.href = "#";
+    link.setAttribute("role", "button");
+    fullscreenLink = link;
+    L.DomEvent.disableClickPropagation(bar);
+    L.DomEvent.on(link, "click", (event) => {
+      L.DomEvent.preventDefault(event);
+      if (mapIsFullscreen()) exitFullscreen();
+      else enterFullscreen();
+    });
+    refreshFullscreenUi();
+    return bar;
+  },
+});
+new FullscreenControl().addTo(map);
+
+document.addEventListener("fullscreenchange", refreshFullscreenUi);
+document.addEventListener("webkitfullscreenchange", refreshFullscreenUi);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && pseudoFullscreen) exitFullscreen();
+});
+
+// With the list out of sight, tapping an area's badge shows its details in place.
+function showAreaPopup(area) {
+  L.popup({ offset: [0, -8] })
+    .setLatLng([area.lat, area.lon])
+    .setContent(
+      `<strong>${zoneName(area)} · ${Math.round(area.distance_m)} m from the pin</strong><br>` +
+      `${spacesText(area)}<br>${rulesText(area, lastGeneratedAt)}<br>` +
+      `<a href="${navigateUrl(area)}" target="_blank" rel="noopener">Navigate</a>`
+    )
+    .openOn(map);
+}
 
 // --- Opening the page: answer first ------------------------------------------------------
 

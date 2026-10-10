@@ -974,3 +974,51 @@ input[type="radio"] {
     height: clamp(240px, 38vh, 380px);
   }
 }
+
+/* ---- Full-screen map --------------------------------------------------- */
+
+.fullscreen-control a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #1a1a1a;
+}
+
+.fullscreen-control svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The overlay fallback (iPhone Safari, or a refused request): the whole viewport,
+   no margins. The native :fullscreen state needs the same, because #map has its
+   own fixed height and the page column's width. */
+#map.map-fullscreen,
+#map:fullscreen,
+#map:-webkit-full-screen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 3000;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+#map.map-fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+}
+
+body.map-fullscreen-open {
+  overflow: hidden;
+}
