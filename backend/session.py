@@ -35,6 +35,9 @@ MAX_RADIUS_M = 2000.0
 # gets. The nearest ones are what would get suggested first anyway.
 MAX_CANDIDATES_PER_QUERY = 300
 
+# How far the stateless nearby query is allowed to widen its search.
+NEARBY_MAX_RADIUS_M = 1000.0
+
 # "Reached" the spot: within this distance of the target.
 APPROACH_THRESHOLD_M = 20.0
 # "Passed without stopping": moved at least this much farther away *after*
@@ -339,6 +342,31 @@ class SessionStore:
         if session.state == SessionState.EXHAUSTED:
             self._auto_expand_while_exhausted(session, now)
         return session
+
+    def nearby(
+        self,
+        zone_filter: set[ZoneType],
+        lat: float,
+        lon: float,
+        preferred_duration_minutes: int | None = None,
+        now: datetime | None = None,
+        radius_m: float = DEFAULT_INITIAL_RADIUS_M,
+        max_radius_m: float = NEARBY_MAX_RADIUS_M,
+    ) -> tuple[list[list[ParkingSegment]], float]:
+        """"What is parked near here?" without keeping a session: the same
+        ranked clusters create() starts from, widening the search in steps
+        until something turns up or `max_radius_m` is reached. Returns the
+        clusters and the radius that produced them. Nothing is stored, so a
+        page view costs no session slot.
+        """
+        now = now or datetime.now(ZURICH_TZ)
+        while True:
+            clusters = self._candidates_for(
+                zone_filter, radius_m, lat, lon, set(), preferred_duration_minutes, now
+            )
+            if clusters or radius_m >= max_radius_m:
+                return clusters, radius_m
+            radius_m = min(radius_m + RADIUS_EXPANSION_STEP_M, max_radius_m)
 
     def get(self, session_id: str) -> ParkingSession | None:
         session = self._sessions.get(session_id)

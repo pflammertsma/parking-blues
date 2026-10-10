@@ -101,3 +101,18 @@ def blue_zone_deadline(arrival: datetime) -> datetime | None:
         return _at(arrival, 14, 30)
 
     return _next_disc_mark(arrival) + timedelta(minutes=MAX_STAY_MINUTES)
+
+
+def blue_zone_disc_mark(arrival: datetime) -> datetime | None:
+    """The mark to set the parking disc to for an arrival at `arrival`, or
+    None when no disc is needed (Sundays, the free lunch hour, overnight --
+    see the module docstring). The same time-of-day windows as
+    blue_zone_deadline's restricted case; the deadline is this mark plus
+    MAX_STAY_MINUTES.
+    """
+    if arrival.weekday() == SUNDAY:
+        return None
+    t = arrival.time()
+    if t < MORNING_START or t >= EVENING_END or MORNING_END <= t < LUNCH_END:
+        return None
+    return _next_disc_mark(arrival)

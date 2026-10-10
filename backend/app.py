@@ -21,7 +21,7 @@ from .auth import (
     Session,
     auth_from_env,
 )
-from .blue_zone_rules import ZURICH_TZ, blue_zone_deadline
+from .blue_zone_rules import ZURICH_TZ, blue_zone_deadline, blue_zone_disc_mark
 from .fee_estimate import ESTIMATED_WHITE_ZONE_RATE_CHF_PER_HOUR
 from .parking_data import ALL_SEGMENTS
 from .geo import haversine_m
@@ -65,6 +65,8 @@ class RateLimits:
     session_calls: str = "60 per minute"                    # get/reject/confirm/expand, per IP
     default: str = "600 per minute"                         # everything else (static files), per IP
     auth: str = "20 per minute;200 per day"                 # sign-in/refresh, per IP
+    nearby: str = "120 per minute;3000 per day"             # parking near a point, per IP
+    nearby_account: str = "600 per minute"
     tiles: str = "3000 per minute"                          # map tiles, per IP (a pan loads dozens)
     # Signed-in callers are counted per account instead of per IP, and get
     # more headroom: abuse can be traced to (and blocked on) an account.
@@ -74,6 +76,10 @@ class RateLimits:
     default_account: str = "1200 per minute"
     enabled: bool = True
 
+
+# The nearby view lists at most this many areas, each drawn with at most this many spots.
+MAX_AREAS = 12
+MAX_SPOTS_PER_AREA = 60
 
 # Anything beyond this is not a legitimate request body for this API.
 MAX_REQUEST_BYTES = 8 * 1024
@@ -296,10 +302,37 @@ def create_app(
             # is not it.
             deadline = blue_zone_deadline(now)
             body["legal_until"] = deadline.isoformat() if deadline else None
+            # What to set the parking disc to; None when no disc is needed
+            # right now (lunch hour, overnight, Sunday).
+            disc_mark = blue_zone_disc_mark(now)
+            body["disc_mark"] = disc_mark.isoformat() if disc_mark else None
         else:
             # See backend/fee_estimate.py -- a single flat guess, not real
             # per-spot pricing (which we have no data for at all).
             body["estimated_fee_chf_per_hour"] = ESTIMATED_WHITE_ZONE_RATE_CHF_PER_HOUR
+        return body
+
+    def area_json(
+        rank: int, spots: list[ParkingSegment], origin_lat: float, origin_lon: float, now: datetime
+    ) -> dict:
+        """One same-zone run of adjacent spots, described by its nearest spot's
+        rules (neighbours share them) plus the whole run's size and shape."""
+        nearest = min(spots, key=lambda s: haversine_m(origin_lat, origin_lon, s.lat, s.lon))
+        rules = segment_json(nearest, origin_lat, origin_lon, origin_lat, origin_lon, now)
+        body = {
+            "rank": rank,
+            "zone_type": rules["zone_type"],
+            "lat": round(sum(s.lat for s in spots) / len(spots), 6),
+            "lon": round(sum(s.lon for s in spots) / len(spots), 6),
+            "capacity": sum(max(1, s.estimated_capacity) for s in spots),
+            "spot_count": len(spots),
+            "distance_m": rules["distance_m"],
+            "max_duration_minutes": rules["max_duration_minutes"],
+            "spots": [[round(s.lat, 6), round(s.lon, 6)] for s in spots[:MAX_SPOTS_PER_AREA]],
+        }
+        for key in ("legal_until", "disc_mark", "estimated_fee_chf_per_hour"):
+            if key in rules:
+                body[key] = rules[key]
         return body
 
     def session_json(session: ParkingSession, now: datetime, event: str | None = None) -> dict:
@@ -368,6 +401,55 @@ def create_app(
             lat, lon, ZONE_FILTERS[zone], preferred_duration_minutes=duration_minutes, now=now
         )
         return jsonify(session_json(session, now)), 201
+
+    @app.get("/api/nearby")
+    @limiter.limit(tiered(limits.nearby, limits.nearby_account), exempt_when=is_owner)
+    def nearby():
+        """Parking areas around a point, ranked, without creating a session:
+        the web page asks this on every destination change."""
+        coordinates = parse_coordinates(
+            {"lat": request.args.get("lat"), "lon": request.args.get("lon")}
+        )
+        if coordinates is None:
+            return jsonify(error="lat and lon are required numbers within range"), 400
+        lat, lon = coordinates
+
+        zone = request.args.get("zone", "both")
+        if zone not in ZONE_FILTERS:
+            return jsonify(error=f"zone must be one of {list(ZONE_FILTERS)}"), 400
+
+        stay = request.args.get("stay")
+        stay_minutes = None
+        if stay not in (None, ""):
+            try:
+                stay_minutes = int(stay)
+                if not 0 < stay_minutes <= 24 * 60:
+                    raise ValueError
+            except ValueError:
+                return jsonify(error="stay must be a number of minutes between 1 and 1440"), 400
+
+        now = datetime.now(ZURICH_TZ)
+        clusters, radius_m = store.nearby(
+            ZONE_FILTERS[zone], lat, lon, preferred_duration_minutes=stay_minutes, now=now
+        )
+        areas = []
+        for cluster in clusters:
+            # A cluster groups any adjacent spots; an area is one zone's
+            # share of it (blue and white follow different rules).
+            for zone_type in (ZoneType.BLUE, ZoneType.WHITE):
+                spots = [seg for seg in cluster if seg.zone_type == zone_type]
+                if spots:
+                    areas.append(area_json(len(areas) + 1, spots, lat, lon, now))
+        response = jsonify(
+            origin={"lat": lat, "lon": lon},
+            zone=zone,
+            stay_minutes=stay_minutes,
+            radius_m=radius_m,
+            generated_at=now.isoformat(),
+            areas=areas[:MAX_AREAS],
+        )
+        response.headers["Cache-Control"] = "private, max-age=20"
+        return response
 
     @app.get("/api/session/<session_id>")
     @limiter.limit(tiered(limits.session_calls, limits.session_calls_account), exempt_when=is_owner)
