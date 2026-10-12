@@ -50,7 +50,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       # keystore/keystore.properties and keystore/parking-blues-release.jks are
       # git-ignored (see android/README.md's Release Builds section) -- CI
@@ -61,6 +61,7 @@ jobs:
       # unsigned bundle.
       - name: Write the release keystore
         run: |
+          test -n "${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}" || { echo "::error::ANDROID_RELEASE_KEYSTORE_BASE64 is not set"; exit 1; }
           mkdir -p keystore
           echo "${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}" | base64 -d > keystore/parking-blues-release.jks
           cat > keystore/keystore.properties <<EOF
@@ -70,8 +71,27 @@ jobs:
           keyPassword=${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
           EOF
 
+      # google-services.json is gitignored (it names our Firebase project), so CI writes it
+      # from a secret into both app modules. Without it the Firebase plugins are skipped and
+      # the bundle would ship with no crash reporting, so a missing secret stops the run.
+      - name: Write the Firebase config (crash reporting)
+        run: |
+          test -n "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" || { echo "::error::GOOGLE_SERVICES_JSON_BASE64 is not set"; exit 1; }
+          echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 -d > app/google-services.json
+          cp app/google-services.json automotive/google-services.json
+
+      # The web client id for Google sign-in is baked into the app at build time (locally it
+      # comes from ~/.gradle/gradle.properties). Without it the sign-in menu entry is hidden.
+      - name: Check the sign-in client id
+        run: test -n "${{ vars.GOOGLE_WEB_CLIENT_ID }}" || { echo "::error::The GOOGLE_WEB_CLIENT_ID repository variable is not set"; exit 1; }
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest
+
       - name: Build release bundles
-        run: ./gradlew :app:bundleRelease :automotive:bundleRelease
+        run: >-
+          ./gradlew :app:bundleRelease :automotive:bundleRelease
+          -Pparkingblues.googleWebClientId="${{ vars.GOOGLE_WEB_CLIENT_ID }}"
 
       - name: Upload phone / Android Auto bundle
         uses: r0adkll/upload-google-play@v1
