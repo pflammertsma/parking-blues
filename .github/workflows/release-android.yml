@@ -1,0 +1,92 @@
+name: Release Android to Play Console
+
+# Manual only -- this is the "we are certain" gate itself, not something that
+# should fire on every push. Builds both release bundles (phone + Android
+# Auto, and Android Automotive OS -- see android/README.md's Release Builds
+# section) and uploads each to its own Play Console track. Needs a one-time
+# setup of the signing and Play API secrets below; see
+# deploy/play-publish-setup.md.
+#
+# Before running this: bump `parkingblues.release` (and `parkingblues.versionName`
+# if this is a user-visible version bump) in android/gradle.properties, commit
+# and push that first. This workflow builds whatever is on the branch it's
+# run against -- it does not bump the version itself, so the version bump
+# stays a deliberate, reviewable commit rather than something CI does silently.
+on:
+  workflow_dispatch:
+    inputs:
+      app_track:
+        description: "Play Console track for the phone / Android Auto bundle (:app)"
+        type: string
+        default: "internal"
+      automotive_track:
+        description: >-
+          Play Console track for the Android Automotive OS bundle (:automotive).
+          Google's form-factor track prefix is "automotive" (e.g.
+          automotive:internal) -- check your Play Console listing's Testing/
+          Production pages for the exact name it actually expects before the
+          first real run; see deploy/play-publish-setup.md.
+        type: string
+        default: "automotive:internal"
+      release_status:
+        description: >-
+          "completed" goes live on the chosen track immediately (normal for
+          internal/alpha/beta, where testers already opted in). "draft"
+          uploads without releasing, so a human has to start the rollout from
+          Play Console -- the safer choice for a production track.
+        type: choice
+        options: ["completed", "draft"]
+        default: "completed"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # keystore/keystore.properties and keystore/parking-blues-release.jks are
+      # git-ignored (see android/README.md's Release Builds section) -- CI
+      # recreates them from secrets instead. The parkingblues.release-signing
+      # convention plugin (build-logic/) reads exactly this file; without it,
+      # release builds are left unsigned rather than failing, so a missing
+      # secret here would fail at the Play upload step, not silently ship an
+      # unsigned bundle.
+      - name: Write the release keystore
+        run: |
+          mkdir -p keystore
+          echo "${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}" | base64 -d > keystore/parking-blues-release.jks
+          cat > keystore/keystore.properties <<EOF
+          storeFile=parking-blues-release.jks
+          storePassword=${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          EOF
+
+      - name: Build release bundles
+        run: ./gradlew :app:bundleRelease :automotive:bundleRelease
+
+      - name: Upload phone / Android Auto bundle
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: dev.lammertsma.parkingblues
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          track: ${{ inputs.app_track }}
+          status: ${{ inputs.release_status }}
+
+      - name: Upload Android Automotive OS bundle
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: dev.lammertsma.parkingblues
+          releaseFiles: android/automotive/build/outputs/bundle/release/automotive-release.aab
+          track: ${{ inputs.automotive_track }}
+          status: ${{ inputs.release_status }}

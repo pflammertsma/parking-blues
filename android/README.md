@@ -81,6 +81,10 @@ adb shell am start -n dev.lammertsma.parkingblues.debug/dev.lammertsma.parkingbl
 .\gradlew.bat :app:bundleRelease :automotive:bundleRelease
 ```
 
+Or let CI build and upload both to Play Console: **Actions → Release Android
+to Play Console → Run workflow** (manual only, never automatic -- see
+`AGENTS.md` section 5). One-time setup: `deploy/play-publish-setup.md`.
+
 | Artifact | Output | Play Console |
 |---|---|---|
 | Phone + Android Auto | `app/build/outputs/bundle/release/app-release.aab` | Normal tracks |
