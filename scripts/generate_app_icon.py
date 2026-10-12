@@ -57,8 +57,11 @@ def layer_paths(group, source, strict=True):
         t = el.get("transform", "").strip()
         if t == "":
             t = "matrix(1,0,0,1,0,0)"
+        tr = re.fullmatch(r"translate\(([-\d.]+)[ ,]+([-\d.]+)\)", t)
+        if tr:  # Inkscape's layer offset: a plain translation, i.e. matrix(1,0,0,1,tx,ty)
+            t = f"matrix(1,0,0,1,{tr.group(1)},{tr.group(2)})"
         m = re.fullmatch(r"matrix\(([-\d.]+),0,0,([-\d.]+),([-\d.]+),([-\d.]+)\)", t)
-        assert m, f"{source}: unsupported transform {t!r}"
+        assert m, f"{source}: unsupported transform {t!r} (matrix or translate only)"
         a, d, e, f = m.groups()
         # Inkscape can leave scale factors a hair apart (1.673575 vs 1.6735595); Android takes
         # scaleX and scaleY separately, so a tiny difference is carried through, not rejected.
