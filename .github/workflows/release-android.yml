@@ -37,6 +37,17 @@ on:
           first real run; see deploy/play-publish-setup.md.
         type: string
         default: "automotive:internal"
+      upload_phone:
+        description: >-
+          Upload the phone / Android Auto bundle. Untick to publish only the Automotive bundle,
+          e.g. when a previous run already got the phone bundle into Play (a version code can
+          only be used once).
+        type: boolean
+        default: true
+      upload_automotive:
+        description: "Upload the Android Automotive OS bundle. Untick to publish only the phone bundle."
+        type: boolean
+        default: true
       release_status:
         description: >-
           "completed" goes live on the chosen track immediately (normal for
@@ -134,6 +145,7 @@ jobs:
           -Pparkingblues.googleWebClientId="${{ vars.GOOGLE_WEB_CLIENT_ID }}"
 
       - name: Upload phone / Android Auto bundle
+        if: github.event_name != 'workflow_dispatch' || inputs.upload_phone
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -143,6 +155,7 @@ jobs:
           status: ${{ inputs.release_status || 'completed' }}
 
       - name: Upload Android Automotive OS bundle
+        if: github.event_name != 'workflow_dispatch' || inputs.upload_automotive
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
