@@ -530,13 +530,18 @@ function rulesText(area, nowIso) {
 
 // Opens the visitor's navigation app on the area: Apple Maps on iOS, otherwise
 // Google Maps (which hands over to the app on Android).
+// Where the Navigate button goes. Android gets a geo: link, which hands the
+// choice to the system (the visitor's default maps/navigation app, or a chooser
+// if they have not set one). iOS has no equivalent, so it opens Apple Maps;
+// everything else (desktop) opens Google Maps in the browser.
 function navigateUrl(area) {
-  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  const ua = navigator.userAgent;
+  const ios = /iPad|iPhone|iPod/.test(ua) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const target = `${area.lat},${area.lon}`;
-  return ios
-    ? `https://maps.apple.com/?daddr=${target}&dirflg=d`
-    : `https://www.google.com/maps/dir/?api=1&destination=${target}&travelmode=driving`;
+  if (ios) return `https://maps.apple.com/?daddr=${target}&dirflg=d`;
+  if (/Android/.test(ua)) return `geo:${target}?q=${target}(${encodeURIComponent("Parking")})`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${target}&travelmode=driving`;
 }
 
 // --- Drawing -----------------------------------------------------------------------
@@ -599,8 +604,10 @@ function renderAreas(data) {
     const nav = document.createElement("a");
     nav.className = "area-nav";
     nav.href = navigateUrl(area);
-    nav.target = "_blank";
-    nav.rel = "noopener";
+    if (nav.href.startsWith("http")) {
+      nav.target = "_blank";
+      nav.rel = "noopener";
+    }
     nav.setAttribute("aria-label", `Navigate to ${zoneName(area)}, ${Math.round(area.distance_m)} m from the pin`);
     nav.title = "Navigate";
     nav.innerHTML =
@@ -1086,7 +1093,7 @@ function showAreaPopup(area) {
     .setContent(
       `<strong>${zoneName(area)} · ${Math.round(area.distance_m)} m from the pin</strong><br>` +
       `${spacesText(area)}<br>${rulesText(area, lastGeneratedAt)}<br>` +
-      `<a href="${navigateUrl(area)}" target="_blank" rel="noopener">Navigate</a>`
+      `<a href="${navigateUrl(area)}"${navigateUrl(area).startsWith("http") ? ' target="_blank" rel="noopener"' : ""}>Navigate</a>`
     )
     .openOn(map);
 }
