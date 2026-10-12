@@ -530,19 +530,79 @@ function rulesText(area, nowIso) {
 
 // Opens the visitor's navigation app on the area: Apple Maps on iOS, otherwise
 // Google Maps (which hands over to the app on Android).
-// Where the Navigate button goes. Android gets a geo: link, which hands the
-// choice to the system (the visitor's default maps/navigation app, or a chooser
-// if they have not set one). iOS has no equivalent, so it opens Apple Maps;
-// everything else (desktop) opens Google Maps in the browser.
+// Where the Navigate button goes. Phones get a geo: link, which hands the
+// choice to the system (the visitor's default maps/navigation app). A phone
+// with nothing that handles it does nothing at all, so a click on one is
+// watched (see the listener below) and the coordinates are offered to copy.
+// Desktop opens Google Maps in the browser.
 function navigateUrl(area) {
   const ua = navigator.userAgent;
-  const ios = /iPad|iPhone|iPod/.test(ua) ||
+  const phone = /Android|iPad|iPhone|iPod/.test(ua) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const target = `${area.lat},${area.lon}`;
-  if (ios) return `https://maps.apple.com/?daddr=${target}&dirflg=d`;
-  if (/Android/.test(ua)) return `geo:${target}?q=${target}(${encodeURIComponent("Parking")})`;
+  if (phone) return `geo:${target}?q=${target}(${encodeURIComponent("Parking")})`;
   return `https://www.google.com/maps/dir/?api=1&destination=${target}&travelmode=driving`;
 }
+
+// When a geo: link opens an app, this page is hidden or loses focus within a
+// moment. If it does not, nothing handled the link: show the coordinates.
+const GEO_WAIT_MS = 1500;
+
+function showGeoFallback(coords) {
+  let box = $("geo-fallback");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "geo-fallback";
+    box.className = "geo-fallback";
+    box.setAttribute("role", "alert");
+    document.body.appendChild(box);
+  }
+  box.innerHTML = "";
+  const text = document.createElement("p");
+  text.textContent =
+    "Your phone has no app set up to open map links like this. Copy the coordinates and paste them into your navigation app:";
+  const code = document.createElement("code");
+  code.textContent = coords;
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.textContent = "Copy";
+  copy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(coords);
+      copy.textContent = "Copied";
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(code);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      copy.textContent = "Press and hold to copy";
+    }
+  });
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "Close";
+  close.addEventListener("click", () => box.remove());
+  const actions = document.createElement("div");
+  actions.className = "geo-actions";
+  actions.append(copy, close);
+  box.append(text, code, actions);
+}
+
+document.addEventListener("click", (event) => {
+  const link = event.target.closest && event.target.closest('a[href^="geo:"]');
+  if (!link) return;
+  const coords = link.getAttribute("href").slice(4).split("?")[0];
+  let handled = false;
+  const done = () => { handled = true; };
+  for (const name of ["visibilitychange", "pagehide", "blur"]) {
+    window.addEventListener(name, done, { once: true });
+  }
+  setTimeout(() => {
+    for (const name of ["visibilitychange", "pagehide", "blur"]) window.removeEventListener(name, done);
+    if (!handled && !document.hidden) showGeoFallback(coords);
+  }, GEO_WAIT_MS);
+}, true); // capture: map pop-ups stop their clicks from bubbling
 
 // --- Drawing -----------------------------------------------------------------------
 

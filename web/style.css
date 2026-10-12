@@ -1333,3 +1333,36 @@ input[type="radio"] {
 body.map-fullscreen-open {
   overflow: hidden;
 }
+
+.geo-fallback {
+  position: fixed;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 3000;
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 0.9rem 1rem;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.geo-fallback p {
+  margin: 0 0 0.5rem;
+}
+
+.geo-fallback code {
+  display: block;
+  margin-bottom: 0.7rem;
+  font-size: 1.05rem;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+.geo-actions {
+  display: flex;
+  gap: 0.5rem;
+}
