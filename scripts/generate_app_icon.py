@@ -74,8 +74,25 @@ def vector(body: str) -> str:
     )
 
 
+# The mark is drawn large in the SVG (it also serves the web header and the Play icon, which are
+# not masked). In the *adaptive* icon the launcher masks the layers, so the foreground and the
+# monochrome layer are shrunk about the canvas centre by this factor to keep the P clear of the
+# mask edge. Set it to 1.0 once the same scaling is baked into the SVGs themselves.
+ADAPTIVE_FOREGROUND_SCALE = 0.92
+CANVAS_CENTER = 474 / 2
+
+
+def shrink_about_center(transform, factor):
+    """matrix(s,0,0,s,tx,ty) scaled by `factor` about the canvas centre c:
+    p' = c + factor * (s*p + t - c) = (factor*s)*p + (factor*t + c*(1 - factor))."""
+    scale, tx, ty = (float(v) for v in transform)
+    shift = CANVAS_CENTER * (1 - factor)
+    fmt = lambda v: f"{v:.6f}".rstrip("0").rstrip(".")
+    return fmt(factor * scale), fmt(factor * tx + shift), fmt(factor * ty + shift)
+
+
 def transformed(paths, transform, indent="    "):
-    scale, tx, ty = transform
+    scale, tx, ty = shrink_about_center(transform, ADAPTIVE_FOREGROUND_SCALE)
     return (
         f'  <group\n      android:scaleX="{scale}"\n      android:scaleY="{scale}"\n'
         f'      android:translateX="{tx}"\n      android:translateY="{ty}">\n'
