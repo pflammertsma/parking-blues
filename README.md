@@ -1,5 +1,7 @@
 # Parking Blues
 
+[![Release Android to Play Console](https://github.com/pflammertsma/parking-blues/actions/workflows/release-android.yml/badge.svg)](https://github.com/pflammertsma/parking-blues/actions/workflows/release-android.yml)
+
 A smart on-street parking assistant that guides drivers to legal parking spaces (**Blaue Zone** and **Weisse Zone**) in Zurich. Available as a web MVP, on Android phones, and in-car via Android Auto and Android Automotive OS (AAOS).
 
 ---
