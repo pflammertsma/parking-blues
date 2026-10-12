@@ -43,12 +43,20 @@ def load(path: Path):
     return groups
 
 
-def layer_paths(group, source):
-    """The (fill, pathData) of every path in a group, plus their shared (scale, tx, ty)."""
+def layer_paths(group, source, strict=True):
+    """The (fill, pathData) of every path in a group, plus their shared (sx, sy, tx, ty).
+
+    A path without a transform is taken to be in canvas coordinates already (identity). With
+    strict=False non-path children (defs, namedview...) are skipped instead of rejected, which is
+    what a bare top-level path in the <svg> needs."""
     paths, transform = [], None
     for el in group:
+        if el.tag != SVG + "path" and not strict:
+            continue
         assert el.tag == SVG + "path", f"{source}: unexpected element {el.tag}"
-        t = el.get("transform", "")
+        t = el.get("transform", "").strip()
+        if t == "":
+            t = "matrix(1,0,0,1,0,0)"
         m = re.fullmatch(r"matrix\(([-\d.]+),0,0,([-\d.]+),([-\d.]+),([-\d.]+)\)", t)
         assert m, f"{source}: unsupported transform {t!r}"
         a, d, e, f = m.groups()
@@ -58,8 +66,10 @@ def layer_paths(group, source):
         current = (a, d, e, f)
         assert transform in (None, current), f"{source}: paths use different transforms"
         transform = current
-        fill = re.search(r"fill:(#[0-9a-fA-F]{6})", el.get("style", "")).group(1)
+        found = re.search(r"fill:(#[0-9a-fA-F]{6})", el.get("style", ""))
+        fill = found.group(1) if found else (el.get("fill") or "#000000")
         paths.append((fill, " ".join(el.get("d").split())))
+    assert paths, f"{source}: no paths found"
     return paths, transform
 
 
@@ -139,8 +149,12 @@ fg_xml = vector(transformed(fg_paths, fg_transform))
 mono_xml = None
 if SRC_MONO.exists():
     mono_groups = load(SRC_MONO)
-    assert "monochrome" in mono_groups, f'{SRC_MONO.name} needs a group labelled "monochrome"'
-    mono_paths, mono_transform = layer_paths(mono_groups["monochrome"], SRC_MONO.name)
+    if "monochrome" in mono_groups:
+        mono_paths, mono_transform = layer_paths(mono_groups["monochrome"], SRC_MONO.name)
+    else:
+        # No group at all is fine: a monochrome layer is one shape (the system tints it), so a
+        # bare top-level path in canvas coordinates is read as is.
+        mono_paths, mono_transform = layer_paths(ET.parse(SRC_MONO).getroot(), SRC_MONO.name, strict=False)
     # Only the alpha matters: the system tints this layer to the wallpaper colours.
     mono_xml = vector(transformed([("#000000", d) for _, d in mono_paths], mono_transform))
 
