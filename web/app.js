@@ -966,6 +966,10 @@ $("search").addEventListener("keydown", (event) => {
 });
 
 $("search").addEventListener("blur", () => setTimeout(() => {
+  // Focus already came back (e.g. search-toggle re-opening it after its own
+  // click first blurred the input, below) -- without this check that stale
+  // timer still fires and collapses the field right after it reopened.
+  if (document.activeElement === $("search")) return;
   hideSuggestions();
   setSearchExpanded(false);
 }, 150));
