@@ -1128,6 +1128,8 @@ input[type="radio"] {
 }
 
 .area {
+  display: flex;
+  align-items: stretch;
   margin-bottom: 0.5rem;
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -1135,7 +1137,28 @@ input[type="radio"] {
   overflow: hidden;
 }
 
+.area.selected {
+  border-color: var(--primary);
+}
+
+.area-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 3.4rem;
+  color: var(--muted-fg);
+}
+
+.area-nav:hover,
+.area-nav:focus-visible {
+  color: var(--fg);
+  background: var(--surface-hover);
+}
+
 .area-row {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 0.8rem;
@@ -1167,10 +1190,6 @@ input[type="radio"] {
   color: var(--muted-fg);
   font-size: 0.9rem;
   font-weight: 400;
-}
-
-.area-details {
-  padding: 0.2rem 0.8rem 0.8rem;
 }
 
 .button-link {

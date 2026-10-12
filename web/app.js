@@ -581,31 +581,31 @@ function renderAreas(data) {
     const li = document.createElement("li");
     li.className = `area ${area.zone_type}`;
     li.dataset.rank = String(area.rank);
-    const expanded = area.rank === state.selected;
+    const selected = area.rank === state.selected;
+    li.classList.toggle("selected", selected);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "area-row";
-    button.setAttribute("aria-expanded", String(expanded));
+    button.setAttribute("aria-pressed", String(selected));
     button.innerHTML = `
       ${zoneIconHtml(area)}
       <span class="area-text">
         <span class="area-title">${zoneName(area)} · ${Math.round(area.distance_m)} m from the pin</span>
         <span class="area-sub">${spacesText(area)} · ${rulesText(area, data.generated_at)}</span>
       </span>`;
-    button.addEventListener("click", () => selectArea(expanded ? null : area.rank, { scroll: false }));
+    button.addEventListener("click", () => selectArea(selected ? null : area.rank, { scroll: false }));
     li.appendChild(button);
-    if (expanded) {
-      const details = document.createElement("div");
-      details.className = "area-details";
-      const nav = document.createElement("a");
-      nav.className = "button-link primary";
-      nav.href = navigateUrl(area);
-      nav.target = "_blank";
-      nav.rel = "noopener";
-      nav.textContent = "Navigate";
-      details.appendChild(nav);
-      li.appendChild(details);
-    }
+    // Navigating is one tap, without selecting the row first.
+    const nav = document.createElement("a");
+    nav.className = "area-nav";
+    nav.href = navigateUrl(area);
+    nav.target = "_blank";
+    nav.rel = "noopener";
+    nav.setAttribute("aria-label", `Navigate to ${zoneName(area)}, ${Math.round(area.distance_m)} m from the pin`);
+    nav.title = "Navigate";
+    nav.innerHTML =
+      '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2 4.5 20.3l.7.7L12 18l6.8 3 .7-.7z"/></svg>';
+    li.appendChild(nav);
     list.appendChild(li);
   }
 }
