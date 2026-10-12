@@ -26,3 +26,8 @@ android/keystore/
 *.jks
 *.keystore
 keystore.properties
+
+# Firebase: identifies the GCP project per Android module. Not a tightly
+# held secret (its API key ends up in the built APK anyway), but still
+# project config that doesn't belong in an open-source repo's history.
+android/**/google-services.json
