@@ -12,10 +12,11 @@ Sources (474x474 canvas, Inkscape layer labels, paths sharing one uniform
   assets/app icon monochrome.svg  a group labelled `monochrome`: the same mark as a single
                                   shape, which Android 13+ tints for "themed icons"
 
-Writes the Android adaptive icon layers into
-android/car/src/main/res/mipmap-anydpi-v26/ (ic_launcher_background.xml,
-ic_launcher_foreground.xml, ic_launcher_monochrome.xml, and the two adaptive-icon
-wrappers) and copies `app icon.svg` to web/icon.svg (the web page's header icon).
+Writes, under android/car/src/main/res/:
+  drawable/ic_launcher_{background,foreground,monochrome}.xml   the adaptive icon layers
+  mipmap-anydpi-v26/ic_launcher{,_round}.xml                    the wrappers the manifest names
+The layers are vector drawables (lint flags a <vector> in a mipmap folder); only the wrappers live
+in mipmap. It also copies `app icon.svg` to web/icon.svg (the web page's header icon).
 
 The 512 px Play Store icon is not generated here; render it with Inkscape:
 
@@ -119,21 +120,27 @@ if SRC_MONO.exists():
     # Only the alpha matters: the system tints this layer to the wallpaper colours.
     mono_xml = vector(transformed([("#000000", d) for _, d in mono_paths], mono_transform))
 
-mip = RES / "mipmap-anydpi-v26"
-(mip / "ic_launcher_background.xml").write_text(bg_xml, encoding="utf-8", newline="\n")
-(mip / "ic_launcher_foreground.xml").write_text(fg_xml, encoding="utf-8", newline="\n")
-mono_file = mip / "ic_launcher_monochrome.xml"
+mip = RES / "mipmap-anydpi-v26"   # the wrappers the manifest names (@mipmap/ic_launcher)
+drw = RES / "drawable"            # the layers: lint flags a <vector> in a mipmap folder
+drw.mkdir(parents=True, exist_ok=True)
+(drw / "ic_launcher_background.xml").write_text(bg_xml, encoding="utf-8", newline="\n")
+(drw / "ic_launcher_foreground.xml").write_text(fg_xml, encoding="utf-8", newline="\n")
+mono_file = drw / "ic_launcher_monochrome.xml"
 if mono_xml:
     mono_file.write_text(mono_xml, encoding="utf-8", newline="\n")
 elif mono_file.exists():
     mono_file.unlink()
+# Earlier versions kept the layers in the mipmap folder; remove those copies.
+for stale in ("ic_launcher_background.xml", "ic_launcher_foreground.xml", "ic_launcher_monochrome.xml"):
+    if (mip / stale).exists():
+        (mip / stale).unlink()
 
 adaptive = (
     '<?xml version="1.0" encoding="utf-8"?>\n'
     '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
-    '  <background android:drawable="@mipmap/ic_launcher_background" />\n'
-    '  <foreground android:drawable="@mipmap/ic_launcher_foreground" />\n'
-    + ('  <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />\n' if mono_xml else "")
+    '  <background android:drawable="@drawable/ic_launcher_background" />\n'
+    '  <foreground android:drawable="@drawable/ic_launcher_foreground" />\n'
+    + ('  <monochrome android:drawable="@drawable/ic_launcher_monochrome" />\n' if mono_xml else "")
     + '</adaptive-icon>\n'
 )
 for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
