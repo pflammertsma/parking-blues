@@ -5,13 +5,13 @@ it when `GOOGLE_WEB_CLIENT_ID` and `AUTH_JWT_SECRET` are set, and the app only
 shows "Sign in with Google" when `parkingblues.googleWebClientId` is set. Until
 then everything behaves exactly as before, so deploying the code first is safe.
 
-Project: `parking-blues-mvp`. Cloud Run service: `parking-blues` (europe-west1).
+Project: `parking-blues`. Cloud Run service: `parking-blues` (europe-west1).
 Run the `gcloud` commands yourself (they change shared cloud resources).
 
 ## 1. Enable the APIs
 
 ```bash
-gcloud services enable firestore.googleapis.com secretmanager.googleapis.com --project parking-blues-mvp
+gcloud services enable firestore.googleapis.com secretmanager.googleapis.com --project parking-blues
 ```
 
 ## 2. Consent screen (Google Auth Platform)
@@ -56,29 +56,29 @@ The Android clients have no secret and nothing to copy.
 
 ## 4. Firestore and the signing secret
 
-*(Done for `parking-blues-mvp` on 2026-10-05: Firestore database in europe-west6, secret
+*(Done for `parking-blues` on 2026-10-05: Firestore database in europe-west6, secret
 `parking-blues-jwt-secret`, and the access grants below. Repeat only for a new project.)*
 
 ```bash
 # Accounts database in Zurich (the location cannot be changed later).
 # "Native mode, production rules": the default rules deny all client access;
 # only the backend's service account can read or write.
-gcloud firestore databases create --location=europe-west6 --type=firestore-native --project parking-blues-mvp
+gcloud firestore databases create --location=europe-west6 --type=firestore-native --project parking-blues
 
 # Which identity does Cloud Run run as? (Usually PROJECT_NUMBER-compute@developer.gserviceaccount.com)
-gcloud run services describe parking-blues --region europe-west1 --project parking-blues-mvp \
+gcloud run services describe parking-blues --region europe-west1 --project parking-blues \
   --format="value(spec.template.spec.serviceAccountName)"
 
 # Let it use Firestore (replace RUNTIME_SA with the address printed above):
-gcloud projects add-iam-policy-binding parking-blues-mvp \
+gcloud projects add-iam-policy-binding parking-blues \
   --member="serviceAccount:RUNTIME_SA" --role="roles/datastore.user"
 
 # A random signing secret for our own access tokens (never printed, never in git):
 python -c "import secrets; print(secrets.token_urlsafe(48), end='')" | \
-  gcloud secrets create parking-blues-jwt-secret --data-file=- --project parking-blues-mvp
+  gcloud secrets create parking-blues-jwt-secret --data-file=- --project parking-blues
 
 # Let the Cloud Run service read it:
-gcloud secrets add-iam-policy-binding parking-blues-jwt-secret --project parking-blues-mvp \
+gcloud secrets add-iam-policy-binding parking-blues-jwt-secret --project parking-blues \
   --member="serviceAccount:RUNTIME_SA" --role="roles/secretmanager.secretAccessor"
 ```
 

@@ -46,7 +46,7 @@ The algorithm (candidate generation, DBSCAN clustering, scoring, retargeting hys
 ### Crash reporting (Firebase Crashlytics)
 * **Contract in `:shared`, SDK in the platform.** `CrashReporter` (`isAvailable`, `isEnabled`) is in `:shared` commonMain and lists what an implementation may report. Android's `AndroidCrashReporter` (in `:car`) is the only implementation today; an iOS app provides its own on the Firebase iOS SDK (a `GoogleService-Info.plist` from a registered iOS app) and passes it to the same shared code. Do not let platform SDK calls leak into shared code.
 * **Only a stack trace, the device model and OS, and the installation id.** Never attach location, searches, account data or where the car is parked (no custom keys, no log lines with them). The privacy policy (`web/privacy.html`, "Crash reports") and the Play Data safety form say exactly that.
-* **Off in debug builds, on by default in release builds, user can switch it off** (phone About screen; the car's "More" screen). **No-op without `google-services.json`**: that file is gitignored (`android/**/google-services.json`, one copy each in `android/app/` and `android/automotive/`), the Firebase Gradle plugins are applied only when it exists, so forks and contributors build as before. Firebase project: `parking-blues` (separate from the backend's GCP project `parking-blues-mvp`); both package names (`dev.lammertsma.parkingblues`, `.debug`) are registered in it.
+* **Off in debug builds, on by default in release builds, user can switch it off** (phone About screen; the car's "More" screen). **No-op without `google-services.json`**: that file is gitignored (`android/**/google-services.json`, one copy each in `android/app/` and `android/automotive/`), the Firebase Gradle plugins are applied only when it exists, so forks and contributors build as before. Firebase project: `parking-blues`, the same project as the backend; both package names (`dev.lammertsma.parkingblues`, `.debug`) are registered in it.
 * **Verify after a release change:** About, long-press the version, Developer options, "Send a test crash"; reopen the app; the report appears in the Firebase console (Crashlytics) within a few minutes. Release builds upload the R8 mapping automatically so traces are readable.
 
 ### Map tiles (CARTO key stays server-side)
@@ -164,7 +164,7 @@ adb shell am start -n dev.lammertsma.parkingblues.debug/dev.lammertsma.parkingbl
 
 * **Cloud Run Backend:**
   * Service: `parking-blues`
-  * Project: `parking-blues-mvp`
+  * Project: `parking-blues` (the one GCP/Firebase project for everything: Cloud Run, Firestore, Secret Manager, OAuth clients, Crashlytics)
   * Region: `europe-west1` (Belgium — chosen because Cloud Run custom domain mappings are unavailable in `europe-west6` Zurich).
   * Manual deploy script: `deploy/gcloud.sh <project-id> <billing-account-id>`
   * CI Workflow: `.github/workflows/deploy-backend.yml` automatically deploys on pushes touching `backend/`.

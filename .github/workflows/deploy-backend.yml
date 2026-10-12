@@ -44,11 +44,11 @@ jobs:
           if [ -n "$GOOGLE_WEB_CLIENT_ID" ]; then
             SECRETS="${SECRETS},AUTH_JWT_SECRET=parking-blues-jwt-secret:latest"
             SIGN_IN_FLAGS+=(
-              --update-env-vars "^@^GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}@AUTH_STORE=firestore@GOOGLE_CLOUD_PROJECT=parking-blues-mvp@OWNER_SUBS=${OWNER_SUBS}"
+              --update-env-vars "^@^GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}@AUTH_STORE=firestore@GOOGLE_CLOUD_PROJECT=parking-blues@OWNER_SUBS=${OWNER_SUBS}"
             )
           fi
           gcloud run deploy parking-blues \
-            --project parking-blues-mvp \
+            --project parking-blues \
             --source . \
             --region europe-west1 \
             --allow-unauthenticated \
