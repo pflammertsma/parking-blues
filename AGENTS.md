@@ -172,7 +172,7 @@ adb shell am start -n dev.lammertsma.parkingblues.debug/dev.lammertsma.parkingbl
   * CI Workflow: `.github/workflows/deploy-backend.yml` automatically deploys on pushes touching `backend/`.
 * **Frontend Hosting:**
   * Hosted at `https://lammertsma.dev/projects/parking-blues` via Firebase Hosting in `pflammertsma/lammertsma-dev`.
-  * Published via `.github/workflows/publish-frontend.yml`, which runs `scripts/publish_to_lammertsma.py`. That script copies an explicit list of files (page, `app.js`, `style.css`, `privacy.html`, `terms.html`): add any new page to it or it will never be published.
+  * Published via `.github/workflows/publish-frontend.yml`, which runs `scripts/publish_to_lammertsma.py`. That script copies an explicit list of files (page, `app.js`, `style.css`, `icon.svg`, `privacy.html`, `terms.html`): add any new page or asset to it or it will never be published.
   * The privacy policy and terms live in `web/` (`/projects/parking-blues/privacy`, `/terms`); keep them in step with what the app and server actually do.
 * **Android Play Console Releases:**
   * `.github/workflows/release-android.yml` -- `workflow_dispatch` only, never on push: this is the "we've decided to ship" gate itself, not a thing that should fire automatically. Builds `:app:bundleRelease` and `:automotive:bundleRelease` and uploads each to its own Play Console track (track names are run inputs, not hardcoded -- see the workflow's own doc comment for why: Google's December 2024 change to Automotive OS distribution means which track name is right depends on how a given listing was set up, not something to assume).

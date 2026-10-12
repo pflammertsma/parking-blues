@@ -18,12 +18,12 @@
       document.documentElement.setAttribute("data-theme", "dark");
     }
   </script>
-  <link rel="stylesheet" href="style.css?v=20" />
+  <link rel="stylesheet" href="style.css?v=21" />
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-brand">
-      <a class="site-home" href="/" title="Paul Lammertsma — home" aria-label="Paul Lammertsma — home"><img src="/favicon.png" alt="" width="32" height="32" /></a>
+      <img class="brand-icon" src="icon.svg" alt="" width="32" height="32" />
       <h1>Parking Blues</h1>
     </div>
     <div class="topbar-actions" id="topbar-actions">
@@ -81,10 +81,18 @@
               <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5" /><path d="M8 20h8M12 16v4" /></svg>
             </button>
           </div>
+          <button type="button" id="about-btn" class="overflow-item">About</button>
         </div>
       </div>
     </div>
   </header>
+
+  <dialog id="about-dialog" class="about-dialog">
+    <img class="brand-icon" src="icon.svg" alt="" width="48" height="48" />
+    <p>Parking Blues was built by Paul Lammertsma.</p>
+    <a href="https://lammertsma.dev" target="_blank" rel="noopener">lammertsma.dev</a>
+    <button type="button" id="about-close">Close</button>
+  </dialog>
 
   <main class="page-main">
     <div id="map"></div>
@@ -120,6 +128,6 @@
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js?v=17"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

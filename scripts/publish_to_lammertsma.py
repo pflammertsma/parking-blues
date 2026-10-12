@@ -48,7 +48,7 @@ def main() -> None:
     dest_dir = Path(sys.argv[1]) / "public" / "projects" / "parking-blues"
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    for name in ("app.js", "style.css"):
+    for name in ("app.js", "style.css", "icon.svg"):
         shutil.copyfile(WEB_DIR / name, dest_dir / name)
 
     # index.html plus the privacy policy and terms (linked from the Play listing,

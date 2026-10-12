@@ -380,7 +380,7 @@ function renderAccount() {
 
 $("account-btn").addEventListener("click", () => setAccountPanelOpen($("account-panel").hidden));
 
-// The overflow menu (currently just the theme picker) follows the same
+// The overflow menu (the theme picker and About) follows the same
 // open/close pattern as the account panel, just for a different button/panel pair.
 function setOverflowPanelOpen(open) {
   $("overflow-panel").hidden = !open;
@@ -398,6 +398,18 @@ document.addEventListener("keydown", (event) => {
     setAccountPanelOpen(false);
     setOverflowPanelOpen(false);
   }
+});
+
+// <dialog>.showModal() gives focus trapping and Escape-to-close for free;
+// a click on the backdrop (the dialog element itself, outside its content)
+// still needs its own handler to close it.
+$("about-btn").addEventListener("click", () => {
+  setOverflowPanelOpen(false);
+  $("about-dialog").showModal();
+});
+$("about-close").addEventListener("click", () => $("about-dialog").close());
+$("about-dialog").addEventListener("click", (event) => {
+  if (event.target === $("about-dialog")) $("about-dialog").close();
 });
 
 $("sign-out").addEventListener("click", async () => {
