@@ -29,19 +29,21 @@ was regenerated.
 | Web client id | In `web/app.js`, in the GitHub variable `GOOGLE_WEB_CLIENT_ID`, and in `parkingblues.googleWebClientId` of the developer's `~/.gradle/gradle.properties` |
 | Cutover verified | The custom domain is served by the new Cloud Run service, and web sign-in works end to end |
 
+## Old project deleted (2026-10-12)
+
+`parking-blues-mvp` was deleted with `gcloud projects delete parking-blues-mvp` once sign-in and the
+custom domain were confirmed working on the new project. GCP keeps a deleted project for 30 days;
+if something turns out to have been missed, it can be restored until then:
+
+```bash
+gcloud projects undelete parking-blues-mvp
+```
+
 ## Still to do
 
-1. **Build and ship the next Android release** so installed apps use the new web client id (releases
-   before this one have the old id baked in and cannot sign in against the new clients).
-2. **Delete `parking-blues-mvp`**, after a few days of everything working. This is the one
-   irreversible step (GCP keeps a deleted project for 30 days):
-
-   ```bash
-   gcloud projects delete parking-blues-mvp
-   ```
+- **Ship the next Android release** (release 5). Apps built before this have the old web client id
+  baked in, so sign-in in them cannot work against the new clients.
 
 ## Notes
 
 - `deploy/gcloud.sh` takes the project id as an argument, so it did not need changing.
-- If the old Firestore ever needs to be read again before step 3, it is still there in
-  `parking-blues-mvp` (`europe-west6`).
