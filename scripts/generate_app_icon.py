@@ -52,8 +52,10 @@ def layer_paths(group, source):
         m = re.fullmatch(r"matrix\(([-\d.]+),0,0,([-\d.]+),([-\d.]+),([-\d.]+)\)", t)
         assert m, f"{source}: unsupported transform {t!r}"
         a, d, e, f = m.groups()
-        assert a == d, f"{source}: non-uniform scale"
-        current = (a, e, f)
+        # Inkscape can leave scale factors a hair apart (1.673575 vs 1.6735595); Android takes
+        # scaleX and scaleY separately, so a tiny difference is carried through, not rejected.
+        assert abs(float(a) - float(d)) < 0.01, f"{source}: scale is not (nearly) uniform: {a} vs {d}"
+        current = (a, d, e, f)
         assert transform in (None, current), f"{source}: paths use different transforms"
         transform = current
         fill = re.search(r"fill:(#[0-9a-fA-F]{6})", el.get("style", "")).group(1)
@@ -74,27 +76,32 @@ def vector(body: str) -> str:
     )
 
 
-# The mark is drawn large in the SVG (it also serves the web header and the Play icon, which are
-# not masked). In the *adaptive* icon the launcher masks the layers, so the foreground and the
-# monochrome layer are shrunk about the canvas centre by this factor to keep the P clear of the
-# mask edge. Set it to 1.0 once the same scaling is baked into the SVGs themselves.
-ADAPTIVE_FOREGROUND_SCALE = 0.92
+# The launcher masks the adaptive layers, so the P has to sit well inside the circle. That scaling
+# now lives in the SVGs themselves (the mark was reduced to 80% there), so no extra shrink is
+# applied here. If you ever need a quick adjustment without touching the SVGs, set this below 1.0:
+# the foreground and monochrome layers are then shrunk together about the canvas centre.
+ADAPTIVE_FOREGROUND_SCALE = 1.0
 CANVAS_CENTER = 474 / 2
 
 
 def shrink_about_center(transform, factor):
-    """matrix(s,0,0,s,tx,ty) scaled by `factor` about the canvas centre c:
+    """matrix(sx,0,0,sy,tx,ty) scaled by `factor` about the canvas centre c:
     p' = c + factor * (s*p + t - c) = (factor*s)*p + (factor*t + c*(1 - factor))."""
-    scale, tx, ty = (float(v) for v in transform)
+    sx, sy, tx, ty = transform
+    if factor == 1.0:
+        return sx, sy, tx, ty  # the SVG's own numbers, untouched
     shift = CANVAS_CENTER * (1 - factor)
-    fmt = lambda v: f"{v:.6f}".rstrip("0").rstrip(".")
-    return fmt(factor * scale), fmt(factor * tx + shift), fmt(factor * ty + shift)
+    fmt = lambda v: f"{v:.7f}".rstrip("0").rstrip(".")
+    return (
+        fmt(factor * float(sx)), fmt(factor * float(sy)),
+        fmt(factor * float(tx) + shift), fmt(factor * float(ty) + shift),
+    )
 
 
 def transformed(paths, transform, indent="    "):
-    scale, tx, ty = shrink_about_center(transform, ADAPTIVE_FOREGROUND_SCALE)
+    sx, sy, tx, ty = shrink_about_center(transform, ADAPTIVE_FOREGROUND_SCALE)
     return (
-        f'  <group\n      android:scaleX="{scale}"\n      android:scaleY="{scale}"\n'
+        f'  <group\n      android:scaleX="{sx}"\n      android:scaleY="{sy}"\n'
         f'      android:translateX="{tx}"\n      android:translateY="{ty}">\n'
         + "".join(
             f'{indent}<path\n{indent}    android:fillColor="{fill.upper()}"\n{indent}    android:pathData="{d}" />\n'
