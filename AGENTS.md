@@ -64,7 +64,9 @@ The algorithm (candidate generation, DBSCAN clustering, scoring, retargeting hys
 ### Algorithmic Decisions
 * **Clustering (`backend/clustering.py`):**
   * `DEFAULT_CLUSTER_EPS_M = 12.0`: Tight threshold to group continuous curb runs without chaining across street corners or intersections.
-  * `cluster_score = log1p(capacity) / (1 + distance/50.0) * (1.0 + free_zone_bonus)`: Logarithmic capacity gives diminishing returns, prioritizing close proximity over distant huge parking fields.
+  * `cluster_score = log1p(capacity) / (1 + distance/50.0) * (1.0 + FREE_ZONE_SCORE_BONUS * free_fraction)`: Logarithmic capacity gives diminishing returns, prioritizing close proximity over distant huge parking fields. `capacity` and `free_fraction` come from `_neighborhood_capacity`, not just the cluster's own segments -- below.
+  * `_neighborhood_capacity`: a cluster's score also counts same-zone-type capacity from *other* clusters within `NEIGHBORHOOD_RADIUS_M` (60m) of its centroid, at `NEIGHBORHOOD_CAPACITY_WEIGHT` (0.8). Without this, a tight real curb run that real-world gaps (driveways, a bus stop) fragment into several tiny same-zone clusters has each one scored alone, individually too small to compete with one bigger cluster nearby -- confirmed live: 8 blue clusters (1-7 spaces each, totaling 22) each lost to a single 100-space white one only ~100m closer, despite the blue stretch clearly being the better bet. `DEFAULT_CLUSTER_EPS_M` stays tight (loosening it risks the intersection-chaining regression it was tuned to fix); this is a separate, looser radius used for scoring only, not for what counts as "one cluster."
+  * `FREE_ZONE_SCORE_BONUS = 0.8`: still a soft nudge, not a hard override -- a free cluster needs a comparable, not just any, distance to win (see `test_free_zone_bonus_does_not_override_a_large_proximity_difference`).
 * **Heading & Directional Distance:**
   * Heading computed when movement >= 5m (`MIN_HEADING_UPDATE_DISTANCE_M`).
   * Straight-ahead candidates get up to 25% distance bonus (`DIRECTION_WEIGHT = 0.25`); candidates behind are penalized to prevent recommending awkward U-turns.

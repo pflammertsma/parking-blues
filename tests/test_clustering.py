@@ -1,4 +1,9 @@
+import pytest
+
 from backend.clustering import (
+    NEIGHBORHOOD_CAPACITY_WEIGHT,
+    NEIGHBORHOOD_RADIUS_M,
+    _neighborhood_capacity,
     build_candidate_order,
     cluster_segments,
     rank_clusters,
@@ -119,3 +124,51 @@ def test_free_zone_bonus_does_not_override_a_large_proximity_difference():
     far_blue = [make_segment("far-blue", 5000, 0, zone_type=ZoneType.BLUE)]
     ranked = rank_clusters([far_blue, close_white], ORIGIN_LAT, ORIGIN_LON)
     assert {s.id for s in ranked[0]} == {"close-white"}
+
+
+def test_fragmented_nearby_blue_clusters_outrank_one_bigger_distant_white_one():
+    # Reported live: a real search where one 100-space white cluster (100m
+    # closer than any single blue one) outranked *every* individual blue
+    # cluster, even though eight separate blue clusters sat within a tight
+    # band a short walk past it, totalling well over double its capacity --
+    # a driver would clearly be better off trying that blue stretch first.
+    # Each blue cluster alone is too small to win on its own; only
+    # recognizing them as one walkable opportunity (see
+    # NEIGHBORHOOD_RADIUS_M) fixes this without loosening clustering itself
+    # (which would risk chaining clusters across intersections again -- see
+    # test_default_eps_does_not_chain_across_a_typical_intersection_gap).
+    white = [make_segment("white", 583, 0, capacity=100, zone_type=ZoneType.WHITE)]
+    blue_clusters = [
+        [make_segment(f"blue-{i}", 658 + i, 0, capacity=cap, zone_type=ZoneType.BLUE)]
+        for i, cap in enumerate([7, 4, 4, 2, 2, 1, 1, 1])
+    ]
+    ranked = rank_clusters([white, *blue_clusters], ORIGIN_LAT, ORIGIN_LON)
+    assert ranked[0][0].zone_type == ZoneType.BLUE
+
+
+def test_neighborhood_capacity_only_counts_other_clusters_within_radius():
+    # Same-zone capacity just beyond NEIGHBORHOOD_RADIUS_M shouldn't count
+    # at all -- it's genuinely a separate, farther trip, not a short extra
+    # stroll from this cluster.
+    near = [make_segment("near", 100, 0, capacity=1, zone_type=ZoneType.BLUE)]
+    just_inside = [
+        make_segment("inside", 100, NEIGHBORHOOD_RADIUS_M - 1, capacity=20, zone_type=ZoneType.BLUE)
+    ]
+    just_outside = [
+        make_segment("outside", 100, NEIGHBORHOOD_RADIUS_M + 1, capacity=20, zone_type=ZoneType.BLUE)
+    ]
+    capacity_with_near_neighbor = _neighborhood_capacity(near, near + just_inside)
+    capacity_with_far_neighbor = _neighborhood_capacity(near, near + just_outside)
+    assert capacity_with_near_neighbor[ZoneType.BLUE] > 1  # boosted by "inside"
+    assert capacity_with_far_neighbor[ZoneType.BLUE] == 1  # "outside" doesn't count
+
+
+def test_neighborhood_capacity_keeps_zone_types_separate():
+    # A nearby white cluster shouldn't inflate a blue cluster's *free*
+    # capacity (and vice versa) -- only same-zone-type capacity counts
+    # toward the free_fraction cluster_score uses for the bonus.
+    blue = [make_segment("blue", 100, 0, capacity=1, zone_type=ZoneType.BLUE)]
+    nearby_white = [make_segment("white-neighbor", 100, 10, capacity=20, zone_type=ZoneType.WHITE)]
+    capacity = _neighborhood_capacity(blue, blue + nearby_white)
+    assert capacity[ZoneType.BLUE] == 1
+    assert capacity[ZoneType.WHITE] == pytest.approx(20 * NEIGHBORHOOD_CAPACITY_WEIGHT)

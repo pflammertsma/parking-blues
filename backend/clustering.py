@@ -26,7 +26,30 @@ DEFAULT_CLUSTER_EPS_M = 12.0
 # A soft nudge (proximity/capacity can still outweigh it), not a hard
 # preference, since a driver asking for "both" zones still wants the
 # genuinely closer option to win when the difference is large.
-FREE_ZONE_SCORE_BONUS = 0.3
+FREE_ZONE_SCORE_BONUS = 0.8
+
+# How far from a cluster's centroid (in meters) same-zone-type capacity
+# still counts toward its score, at a discount -- see
+# _neighborhood_capacity. Looser than DEFAULT_CLUSTER_EPS_M on purpose:
+# that threshold decides whether segments are the SAME walkable spot (tight,
+# so a cluster never chains across a street corner); this decides whether
+# a *different*, separately-ranked cluster is still an easy extra stroll
+# away, which real Zurich zone boundaries make a wider, looser question --
+# a continuous curb run of blue-zone parking often gets fragmented into
+# several tiny clusters a few car-lengths apart (driveways, a bus stop, a
+# tree pit), each too small on its own to rank well against one big
+# adjacent lot, even though together they're the better bet. Reported live:
+# a Play Console-grade example where 8 blue clusters (1-7 spaces each, 658-
+# 685m away, ~22 spaces total) individually all lost to one 100-space white
+# lot 583m away, despite the blue zone being the obviously better place for
+# a driver to actually go first.
+NEIGHBORHOOD_RADIUS_M = 60.0
+
+# Nearby capacity (within NEIGHBORHOOD_RADIUS_M, from a *different* cluster)
+# counts at this fraction of capacity that's actually in this cluster --
+# it's a real extra option, but still costs a short extra walk/drive between
+# micro-clusters that in-cluster capacity doesn't.
+NEIGHBORHOOD_CAPACITY_WEIGHT = 0.8
 
 
 class _UnionFind:
@@ -74,10 +97,44 @@ def cluster_centroid(cluster: list[ParkingSegment]) -> tuple[float, float]:
     return lat, lon
 
 
-def cluster_score(cluster: list[ParkingSegment], origin_lat: float, origin_lon: float) -> float:
-    """Higher is better: rewards more estimated capacity and a higher
-    fraction of free (blue-zone) segments, penalizes distance from the
-    origin. See README section 4, step 2.
+def _neighborhood_capacity(
+    cluster: list[ParkingSegment], all_segments: list[ParkingSegment] | None
+) -> dict[ZoneType, float]:
+    """Each zone type's capacity "reachable" from this cluster: its own
+    segments, plus a discounted share of same-zone-type capacity from
+    *other* clusters within NEIGHBORHOOD_RADIUS_M of this one's centroid --
+    see that constant's doc for why. `all_segments` is the full candidate
+    pool a cluster was cut from (None when the caller never had it, e.g. a
+    cluster list built and scored directly in a test -- then there's
+    nothing to look beyond this cluster's own segments).
+    """
+    centroid_lat, centroid_lon = cluster_centroid(cluster)
+    capacity = {ZoneType.BLUE: 0.0, ZoneType.WHITE: 0.0}
+    for s in cluster:
+        capacity[s.zone_type] += s.estimated_capacity
+
+    if all_segments:
+        own_ids = {s.id for s in cluster}
+        for s in all_segments:
+            if s.id in own_ids:
+                continue
+            if haversine_m(centroid_lat, centroid_lon, s.lat, s.lon) <= NEIGHBORHOOD_RADIUS_M:
+                capacity[s.zone_type] += NEIGHBORHOOD_CAPACITY_WEIGHT * s.estimated_capacity
+
+    return capacity
+
+
+def cluster_score(
+    cluster: list[ParkingSegment],
+    origin_lat: float,
+    origin_lon: float,
+    all_segments: list[ParkingSegment] | None = None,
+) -> float:
+    """Higher is better: rewards more estimated capacity (this cluster's
+    own, plus nearby same-zone-type capacity -- see
+    NEIGHBORHOOD_CAPACITY_WEIGHT) and a higher fraction of that capacity
+    being free (blue-zone), penalizes distance from the origin. See README
+    section 4, step 2.
 
     Capacity is log-scaled and distance penalized more steeply than the
     original (linear-capacity, /100) formula this replaced: against real
@@ -92,25 +149,35 @@ def cluster_score(cluster: list[ParkingSegment], origin_lat: float, origin_lon: 
     """
     centroid_lat, centroid_lon = cluster_centroid(cluster)
     distance_m = haversine_m(origin_lat, origin_lon, centroid_lat, centroid_lon)
-    total_capacity = sum(s.estimated_capacity for s in cluster)
-    free_fraction = sum(s.zone_type == ZoneType.BLUE for s in cluster) / len(cluster)
+    capacity = _neighborhood_capacity(cluster, all_segments)
+    total_capacity = capacity[ZoneType.BLUE] + capacity[ZoneType.WHITE]
+    free_fraction = capacity[ZoneType.BLUE] / total_capacity if total_capacity else 0.0
     base_score = math.log1p(total_capacity) / (1.0 + distance_m / 50.0)
     return base_score * (1.0 + FREE_ZONE_SCORE_BONUS * free_fraction)
 
 
 def rank_clusters(
-    clusters: list[list[ParkingSegment]], origin_lat: float, origin_lon: float
+    clusters: list[list[ParkingSegment]],
+    origin_lat: float,
+    origin_lon: float,
+    all_segments: list[ParkingSegment] | None = None,
 ) -> list[list[ParkingSegment]]:
     """Rank clusters best-first, and order segments within each cluster by
-    distance from the origin (nearest first).
+    distance from the origin (nearest first). `all_segments` is the full
+    pool `clusters` was cut from, for the neighborhood-capacity term in
+    cluster_score -- defaults to clusters' own union when not given (e.g. a
+    test building a cluster list directly, where that union already is
+    everything there is to know about).
     """
+    if all_segments is None:
+        all_segments = [s for c in clusters for s in c]
 
     def segment_distance(seg: ParkingSegment) -> float:
         return haversine_m(origin_lat, origin_lon, seg.lat, seg.lon)
 
     ranked = sorted(
         clusters,
-        key=lambda c: cluster_score(c, origin_lat, origin_lon),
+        key=lambda c: cluster_score(c, origin_lat, origin_lon, all_segments),
         reverse=True,
     )
     return [sorted(c, key=segment_distance) for c in ranked]
@@ -130,7 +197,7 @@ def build_ranked_clusters(
     if not segments:
         return []
     clusters = cluster_segments(segments, eps_m=eps_m)
-    return rank_clusters(clusters, origin_lat, origin_lon)
+    return rank_clusters(clusters, origin_lat, origin_lon, segments)
 
 
 def build_candidate_order(
