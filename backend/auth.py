@@ -62,11 +62,27 @@ class Account:
     blocked_until: float | None = None  # epoch seconds; ignored unless ``blocked``
     blocked: bool = False
     block_reason: str = ""
+    # The one "I parked here" record for this account, mirroring the on-device
+    # ParkedSpot a signed-in client (phone/Android Auto) already keeps locally
+    # (android/car/.../ParkedSpotStore.kt) -- storing it here too is what lets
+    # a device with no local copy (Android Automotive OS, a reinstall, a second
+    # phone) read back where the car was parked. None/no fields set means no
+    # spot is on record, same as the local store's "nothing saved" state.
+    parked_lat: float | None = None
+    parked_lon: float | None = None
+    parked_zone_type: str | None = None
+    parked_address_label: str | None = None
+    parked_confirmed_at: float | None = None  # epoch seconds
+    parked_expires_at: float | None = None  # epoch seconds; blue-zone legal limit, if any
+    parked_fee_chf_per_hour: float | None = None
 
     def is_blocked(self, now: float) -> bool:
         if not self.blocked:
             return False
         return self.blocked_until is None or now < self.blocked_until
+
+    def has_parked_spot(self) -> bool:
+        return self.parked_lat is not None and self.parked_lon is not None
 
 
 # ---------------------------------------------------------------- storage
@@ -310,6 +326,46 @@ class AuthService:
         self.store.delete_refresh_for(sub)
         self.store.delete(sub)
         self._cache.pop(sub, None)
+
+    # -- parked spot ----------------------------------------------------------
+    def save_parked_spot(
+        self,
+        sub: str,
+        lat: float,
+        lon: float,
+        zone_type: str | None,
+        address_label: str | None,
+        expires_at: float | None,
+        fee_chf_per_hour: float | None,
+    ) -> Account:
+        account = self.store.get(sub)
+        if account is None:
+            raise AuthError("unknown_account", "Unknown account", 404)
+        account.parked_lat = lat
+        account.parked_lon = lon
+        account.parked_zone_type = zone_type
+        account.parked_address_label = address_label
+        account.parked_confirmed_at = self.clock()
+        account.parked_expires_at = expires_at
+        account.parked_fee_chf_per_hour = fee_chf_per_hour
+        self.store.save(account)
+        self._remember(account)
+        return account
+
+    def clear_parked_spot(self, sub: str) -> Account:
+        account = self.store.get(sub)
+        if account is None:
+            raise AuthError("unknown_account", "Unknown account", 404)
+        account.parked_lat = None
+        account.parked_lon = None
+        account.parked_zone_type = None
+        account.parked_address_label = None
+        account.parked_confirmed_at = None
+        account.parked_expires_at = None
+        account.parked_fee_chf_per_hour = None
+        self.store.save(account)
+        self._remember(account)
+        return account
 
     # -- helpers ------------------------------------------------------------
     def _refuse_if_blocked(self, account: Account) -> None:

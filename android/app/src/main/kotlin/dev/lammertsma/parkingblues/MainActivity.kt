@@ -76,6 +76,7 @@ import dev.lammertsma.parkingblues.car.car.EXTRA_SHOW_PARKED
 import dev.lammertsma.parkingblues.car.car.cancelExpiryReminder
 import dev.lammertsma.parkingblues.car.car.clearParkedSpot
 import dev.lammertsma.parkingblues.car.car.loadParkedSpot
+import dev.lammertsma.parkingblues.car.car.saveParkedSpot
 import dev.lammertsma.parkingblues.car.location.getLastZone
 import dev.lammertsma.parkingblues.car.location.isTestLocationEnabled
 import dev.lammertsma.parkingblues.car.location.lastKnownLocation
@@ -176,6 +177,19 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         parkedSpot.value = loadParkedSpot(this)
+        if (parkedSpot.value == null) {
+            // No local record (fresh install, app data cleared, a different
+            // device parked it) -- the account may still remember it, e.g.
+            // "Parked here" was tapped on Android Auto/AAOS and synced via
+            // ParkingSessionRepository.syncParkedSpot. Best-effort: silently
+            // stays null if signed out, offline, or nothing is on record.
+            lifecycleScope.launch {
+                repository.fetchParkedSpot()?.let { spot ->
+                    parkedSpot.value = spot
+                    saveParkedSpot(this@MainActivity, spot)
+                }
+            }
+        }
         currentZone.value = getLastZone(this)
         setContent {
             ParkingBluesTheme {
@@ -307,6 +321,10 @@ class MainActivity : ComponentActivity() {
         parkedSpot.value = null
         browsing.value = false
         repository.reset()
+        // Best-effort: also clears the account's copy, so another signed-in
+        // device (or this one, after a reinstall) doesn't keep offering a
+        // spot the driver already found.
+        lifecycleScope.launch { repository.clearParkedSpotSync() }
         if (isTestLocationEnabled(this) || hasLocationPermission()) startSearch(currentZone.value)
     }
 

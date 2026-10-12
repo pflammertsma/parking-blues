@@ -122,6 +122,37 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
         _error.value = null
     }
 
+    // -- parked spot sync (best-effort; see backend/app.py's /api/me/parked) --
+    // A nicety on top of the on-device record (ParkedSpotStore on Android),
+    // not a replacement for it: these never touch _error/_session, so a
+    // failure here (not signed in, offline, server hiccup) is silent and
+    // never interrupts anything the driver is actually doing. :automotive
+    // constructs its ParkingApiClient with no access token at all (no sign-in
+    // there yet -- see AGENTS.md section 2, "optional sign-in"), so every
+    // call here from that process predictably 401s and no-ops; that's
+    // expected until Automotive OS gets its own sign-in flow, not a bug.
+
+    suspend fun syncParkedSpot(
+        lat: Double,
+        lon: Double,
+        zoneType: String?,
+        addressLabel: String?,
+        expiresAtEpochMillis: Long?,
+        estimatedFeeChfPerHour: Double?,
+    ) {
+        runCatching {
+            api.saveParkedSpot(lat, lon, zoneType, addressLabel, expiresAtEpochMillis, estimatedFeeChfPerHour)
+        }
+    }
+
+    /** The account's remembered parked spot, or null if signed out, nothing
+     *  is on record, or the call simply failed -- see this section's doc. */
+    suspend fun fetchParkedSpot() = runCatching { api.getParkedSpot() }.getOrNull()
+
+    suspend fun clearParkedSpotSync() {
+        runCatching { api.deleteParkedSpot() }
+    }
+
     private companion object {
         const val DEFAULT_BACKOFF_SECONDS = 10
     }

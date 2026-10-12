@@ -199,6 +199,24 @@ def create_app(
     def account_json(account: Account) -> dict:
         return {"sub": account.sub, "email": account.email, "name": account.name, "role": account.role}
 
+    def parked_json(account: Account) -> dict:
+        # Epoch *milliseconds* on the wire (matching the Android ParkedSpot
+        # model's Long fields) -- stored epoch *seconds* internally, like the
+        # rest of this account (created_at, blocked_until, ...).
+        return {
+            "lat": account.parked_lat,
+            "lon": account.parked_lon,
+            "zone_type": account.parked_zone_type,
+            "address_label": account.parked_address_label,
+            "confirmed_at_epoch_millis": (
+                round(account.parked_confirmed_at * 1000) if account.parked_confirmed_at is not None else None
+            ),
+            "expires_at_epoch_millis": (
+                round(account.parked_expires_at * 1000) if account.parked_expires_at is not None else None
+            ),
+            "estimated_fee_chf_per_hour": account.parked_fee_chf_per_hour,
+        }
+
     def auth_unavailable():
         return jsonify(error="sign-in is not available", code="auth_unavailable"), 503
 
@@ -253,6 +271,63 @@ def create_app(
         if auth is None or not g.get("sub"):
             return jsonify(error="sign in required", code="unauthenticated"), 401
         auth.delete_account(g.sub)
+        return "", 204
+
+    # "I parked here", synced server-side so a device with no local copy can
+    # read it back -- chiefly Android Automotive OS, which has no phone to
+    # share android/car/.../ParkedSpotStore.kt's on-device record with (see
+    # AGENTS.md section 3, gotcha 8, and MapSearchScreen's "Parked here"
+    # doc). Signed-in only: there's no account to attach it to otherwise,
+    # and that's the whole point of this endpoint over the local store.
+    @app.get("/api/me/parked")
+    @limiter.limit(tiered(limits.session_calls, limits.session_calls_account), exempt_when=is_owner)
+    def get_parked():
+        if auth is None or not g.get("sub"):
+            return jsonify(error="sign in required", code="unauthenticated"), 401
+        account = auth.account(g.sub)
+        if account is None or not account.has_parked_spot():
+            return jsonify(error="no parked spot on record", code="no_parked_spot"), 404
+        return jsonify(parked_json(account))
+
+    @app.put("/api/me/parked")
+    @limiter.limit(tiered(limits.session_calls, limits.session_calls_account), exempt_when=is_owner)
+    def put_parked():
+        if auth is None or not g.get("sub"):
+            return jsonify(error="sign in required", code="unauthenticated"), 401
+        data = request.get_json(silent=True) or {}
+        coords = parse_coordinates(data)
+        if coords is None:
+            return jsonify(error="lat and lon are required numbers"), 400
+        lat, lon = coords
+        zone_type = data.get("zone_type")
+        if zone_type is not None and zone_type not in ("blue", "white"):
+            return jsonify(error="zone_type must be 'blue', 'white', or omitted"), 400
+        address_label = string_field("address_label")
+        expires_at_ms = data.get("expires_at_epoch_millis")
+        try:
+            expires_at = float(expires_at_ms) / 1000 if expires_at_ms is not None else None
+        except (TypeError, ValueError):
+            return jsonify(error="expires_at_epoch_millis must be a number"), 400
+        fee = data.get("estimated_fee_chf_per_hour")
+        try:
+            fee = float(fee) if fee is not None else None
+        except (TypeError, ValueError):
+            return jsonify(error="estimated_fee_chf_per_hour must be a number"), 400
+        try:
+            account = auth.save_parked_spot(g.sub, lat, lon, zone_type, address_label, expires_at, fee)
+        except AuthError as exc:
+            return jsonify(error=exc.message, code=exc.code), exc.status
+        return jsonify(parked_json(account))
+
+    @app.delete("/api/me/parked")
+    @limiter.limit(tiered(limits.session_calls, limits.session_calls_account), exempt_when=is_owner)
+    def delete_parked():
+        if auth is None or not g.get("sub"):
+            return jsonify(error="sign in required", code="unauthenticated"), 401
+        try:
+            auth.clear_parked_spot(g.sub)
+        except AuthError as exc:
+            return jsonify(error=exc.message, code=exc.code), exc.status
         return "", 204
 
     @app.after_request

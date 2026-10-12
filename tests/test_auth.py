@@ -427,6 +427,83 @@ def test_delete_account_over_http():
     assert service.store.get(ALICE) is None
 
 
+# ------------------------------------------------------------ parked spot
+
+def test_parked_spot_round_trips_over_http():
+    client, _, clock = make_client()
+    _, auth = sign_in(client)
+
+    assert client.get("/api/me/parked", headers=auth).status_code == 404
+
+    body = {
+        "lat": 47.3793,
+        "lon": 8.5314,
+        "zone_type": "blue",
+        "address_label": "Street parking spot #42",
+        "expires_at_epoch_millis": (clock.now + 3600) * 1000,
+        "estimated_fee_chf_per_hour": 2.0,
+    }
+    put_response = client.put("/api/me/parked", json=body, headers=auth)
+    assert put_response.status_code == 200, put_response.get_json()
+    saved = put_response.get_json()
+    assert saved["lat"] == 47.3793
+    assert saved["zone_type"] == "blue"
+    assert saved["address_label"] == "Street parking spot #42"
+    assert saved["confirmed_at_epoch_millis"] == round(clock.now * 1000)
+    assert saved["expires_at_epoch_millis"] == round((clock.now + 3600) * 1000)
+    assert saved["estimated_fee_chf_per_hour"] == 2.0
+
+    got = client.get("/api/me/parked", headers=auth).get_json()
+    assert got == saved
+
+    assert client.delete("/api/me/parked", headers=auth).status_code == 204
+    assert client.get("/api/me/parked", headers=auth).status_code == 404
+
+
+def test_parked_spot_for_a_white_zone_has_no_expiry():
+    client, _, _ = make_client()
+    _, auth = sign_in(client)
+    body = {"lat": 47.37, "lon": 8.53, "zone_type": "white", "estimated_fee_chf_per_hour": 3.0}
+    saved = client.put("/api/me/parked", json=body, headers=auth).get_json()
+    assert saved["expires_at_epoch_millis"] is None
+    assert saved["estimated_fee_chf_per_hour"] == 3.0
+
+
+def test_parked_spot_without_a_segment_still_remembers_the_location():
+    # A driver can park somewhere the session never specifically recommended
+    # -- zone_type/address_label/expiry/fee all omitted, just a location.
+    client, _, _ = make_client()
+    _, auth = sign_in(client)
+    saved = client.put("/api/me/parked", json={"lat": 47.37, "lon": 8.53}, headers=auth).get_json()
+    assert saved["lat"] == 47.37 and saved["lon"] == 8.53
+    assert saved["zone_type"] is None
+    assert saved["expires_at_epoch_millis"] is None
+
+
+def test_parked_spot_requires_sign_in():
+    client, _, _ = make_client()
+    assert client.get("/api/me/parked").status_code == 401
+    assert client.put("/api/me/parked", json={"lat": 47.37, "lon": 8.53}).status_code == 401
+    assert client.delete("/api/me/parked").status_code == 401
+
+
+def test_parked_spot_rejects_bad_input():
+    client, _, _ = make_client()
+    _, auth = sign_in(client)
+    assert client.put("/api/me/parked", json={"lat": "nope", "lon": 8.53}, headers=auth).status_code == 400
+    assert client.put("/api/me/parked", json={"lat": 47.37, "lon": 8.53, "zone_type": "green"},
+                      headers=auth).status_code == 400
+    assert client.put("/api/me/parked", json={"lat": 47.37, "lon": 8.53, "estimated_fee_chf_per_hour": "lots"},
+                      headers=auth).status_code == 400
+
+
+def test_parked_spot_is_anonymous_use_safe():
+    # Anonymous callers never reach the parked-spot endpoints at all (401
+    # before any account lookup), so this stays exactly as before for them.
+    client, _, _ = make_client()
+    assert new_session(client).status_code == 201
+
+
 def test_sign_in_endpoints_are_rate_limited_per_address():
     client, _, _ = make_client(RateLimits(auth="2 per minute"))
     codes = [client.post("/api/auth/google", json={"id_token": ALICE}).status_code for _ in range(3)]

@@ -2,6 +2,7 @@ package dev.lammertsma.parkingblues.shared.api
 
 import dev.lammertsma.parkingblues.shared.model.AccountInfo
 import dev.lammertsma.parkingblues.shared.model.AuthSession
+import dev.lammertsma.parkingblues.shared.model.ParkedSpot
 import dev.lammertsma.parkingblues.shared.model.SessionSnapshot
 import dev.lammertsma.parkingblues.shared.model.ZoneFilter
 import io.ktor.client.HttpClient
@@ -16,6 +17,7 @@ import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -89,6 +91,16 @@ private data class IdTokenRequest(@SerialName("id_token") val idToken: String)
 
 @Serializable
 private data class RefreshRequest(@SerialName("refresh_token") val refreshToken: String)
+
+@Serializable
+private data class ParkedSpotRequest(
+    val lat: Double,
+    val lon: Double,
+    @SerialName("zone_type") val zoneType: String? = null,
+    @SerialName("address_label") val addressLabel: String? = null,
+    @SerialName("expires_at_epoch_millis") val expiresAtEpochMillis: Long? = null,
+    @SerialName("estimated_fee_chf_per_hour") val estimatedFeeChfPerHour: Double? = null,
+)
 
 private val configureClient: HttpClientConfig<*>.() -> Unit = {
     install(ContentNegotiation) {
@@ -221,6 +233,35 @@ class ParkingApiClient private constructor(
 
     suspend fun deleteAccount() {
         http.delete("$baseUrl/api/me") { authorize() }.failIfNotSuccess()
+    }
+
+    // -- parked spot (signed-in only -- see backend/app.py) -------------------
+
+    /** Null means no parked spot is on record for this account (a 404, not
+     *  an error) -- distinct from the account not being signed in at all,
+     *  which still throws ApiException(401) via bodyOrThrow like any other
+     *  authenticated call. */
+    suspend fun getParkedSpot(): ParkedSpot? {
+        val response = http.get("$baseUrl/api/me/parked") { authorize() }
+        if (response.status == HttpStatusCode.NotFound) return null
+        return response.bodyOrThrow()
+    }
+
+    suspend fun saveParkedSpot(
+        lat: Double,
+        lon: Double,
+        zoneType: String?,
+        addressLabel: String?,
+        expiresAtEpochMillis: Long?,
+        estimatedFeeChfPerHour: Double?,
+    ): ParkedSpot = http.put("$baseUrl/api/me/parked") {
+        authorize()
+        contentType(ContentType.Application.Json)
+        setBody(ParkedSpotRequest(lat, lon, zoneType, addressLabel, expiresAtEpochMillis, estimatedFeeChfPerHour))
+    }.bodyOrThrow()
+
+    suspend fun deleteParkedSpot() {
+        http.delete("$baseUrl/api/me/parked") { authorize() }.failIfNotSuccess()
     }
 
     fun close() = http.close()

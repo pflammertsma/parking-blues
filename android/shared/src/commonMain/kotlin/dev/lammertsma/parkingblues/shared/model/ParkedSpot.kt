@@ -1,5 +1,6 @@
 package dev.lammertsma.parkingblues.shared.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -17,14 +18,19 @@ import kotlinx.serialization.Serializable
  * algorithm" rule (see AGENTS.md); white-zone spots have no hard legal
  * expiry in this data, so this stays null for them (estimatedFeeChfPerHour
  * is kept instead, as a payment reminder rather than a deadline).
+ *
+ * Also the response shape of GET/PUT /api/me/parked (ParkingApiClient),
+ * which is why the @SerialName annotations are here even though the local
+ * on-device JSON round-trip (ParkedSpotStore) doesn't itself care about key
+ * names -- one model instead of two for the same data.
  */
 @Serializable
 data class ParkedSpot(
     val lat: Double,
     val lon: Double,
-    val zoneType: ZoneType?,
-    val addressLabel: String?,
-    val confirmedAtEpochMillis: Long,
-    val expiresAtEpochMillis: Long?,
-    val estimatedFeeChfPerHour: Double? = null,
+    @SerialName("zone_type") val zoneType: ZoneType?,
+    @SerialName("address_label") val addressLabel: String?,
+    @SerialName("confirmed_at_epoch_millis") val confirmedAtEpochMillis: Long,
+    @SerialName("expires_at_epoch_millis") val expiresAtEpochMillis: Long?,
+    @SerialName("estimated_fee_chf_per_hour") val estimatedFeeChfPerHour: Double? = null,
 )
