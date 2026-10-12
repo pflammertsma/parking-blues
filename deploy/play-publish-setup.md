@@ -16,8 +16,9 @@ Actions instead of `./gradlew bundleRelease` + a manual drag-and-drop.
 Play Console: **Setup → API access**.
 
 1. If no Google Cloud project is linked yet, link or create one (a dedicated
-   project is cleaner than reusing `parking-blues-mvp`, but either works --
-   this only needs the Android Publisher API, nothing else in that project).
+   project is cleaner than reusing `parking-blues` -- the backend's and
+   Firebase's project, see `AGENTS.md` section 5 -- but either works; this
+   only needs the Android Publisher API, nothing else in that project).
 2. **Create new service account** -- this takes you to Google Cloud Console's
    IAM page. Create the service account there (any name, e.g.
    `play-publish-ci`), no roles needed at the *Google Cloud* IAM level.

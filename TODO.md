@@ -104,7 +104,7 @@ Built: parking around the visitor on open, both zones, address search (swisstopo
 
 ## Car (Android Auto / Automotive OS)
 - [ ] **Resubmit to Play** (release 4, includes the launch-crash fix and the nearby-areas list). Re-test a fresh release install with nothing granted before each submission (`AGENTS.md` gotcha 13).
-- [ ] **Crash reporting (Firebase Crashlytics):** add to `:app` and `:automotive` (release only) so crashes in the wild, including Play review devices, show up. Needs a Firebase project (add Firebase to `parking-blues-mvp`), `google-services.json` per package (`dev.lammertsma.parkingblues` and the `.debug` one), and then: privacy policy (crash reports, installation ID), Play Data safety (crash logs, diagnostics), and `android/README.md`.
+- [x] **Crash reporting (Firebase Crashlytics):** `:app` and `:automotive` (release only) report crashes via the `parking-blues` Firebase project; see `AGENTS.md`'s "Crash reporting" section for the contract, the privacy policy's "Crash reports" section, and the Play Data safety form.
 - [ ] Confirm on the DHU that the icon-only Recenter button and the debug-only ⋮ button fit the action strip, and that Developer options and the test-location toggle work.
 - [ ] Verify the heading and position smoothing on a real drive (arrow follows travel direction, no hopping).
 - [ ] Capture and review the car screen in light and dark.
