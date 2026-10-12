@@ -86,14 +86,17 @@
 
 html {
   overflow-x: hidden;
+  height: 100%;
 }
 
 body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
   font-family: var(--font-body);
   font-size: 17px;
   line-height: 1.6;
   margin: 0;
-  padding: 0 0 2rem;
   color: var(--muted-fg);
   background: var(--bg);
   background-image:
@@ -129,9 +132,16 @@ p {
 
 /* ---- Top bar -------------------------------------------------------- */
 
-/* The header spans the full page width; everything else sits in a centered
-   720px column. */
-body > :not(.topbar):not(script) {
+/* The header and footer span the full page width; the content between them
+   sits in a centered 720px column, wrapped in the unstyled .page-main so it
+   can flex-grow to fill the remaining height (flex-column body) without
+   stretching .legal's own card background on the legal pages. That's what
+   lands .site-footer, below, at the very bottom of the viewport on short
+   pages instead of floating right under a short results list or a short
+   legal page -- the classic "sticky footer" layout, achieved without
+   position: fixed so it never overlaps content while scrolling. */
+.page-main {
+  flex: 1 0 auto;
   width: min(720px, calc(100% - 2rem));
   margin-left: auto;
   margin-right: auto;
@@ -139,6 +149,7 @@ body > :not(.topbar):not(script) {
 
 .topbar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
@@ -709,13 +720,26 @@ input[type="radio"] {
 
 /* ---- Footer --------------------------------------------------------- */
 
+/* Full width and flex-shrink: 0 (not the centered 720px column, and never
+   compressed by .page-main's flex-grow above) -- see the flex-column body
+   rule near the top of this file for how this ends up pinned to the very
+   bottom of the viewport on short pages. */
 .site-footer {
-  margin-top: 2.5rem;
-  padding: 1.5rem 0 0;
+  flex-shrink: 0;
+  width: 100%;
+  padding: 0.6rem 1rem;
   border-top: 1px solid var(--border);
   color: var(--muted-fg);
-  font-size: 14px;
+  font-size: 13px;
   text-align: center;
+  box-sizing: border-box;
+}
+
+@media (max-width: 600px) {
+  .site-footer {
+    padding: 0.5rem 1rem;
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 600px) {

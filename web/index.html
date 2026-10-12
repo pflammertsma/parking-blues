@@ -18,7 +18,7 @@
       document.documentElement.setAttribute("data-theme", "dark");
     }
   </script>
-  <link rel="stylesheet" href="style.css?v=16" />
+  <link rel="stylesheet" href="style.css?v=17" />
 </head>
 <body>
   <header class="topbar">
@@ -57,42 +57,44 @@
     </div>
   </header>
 
-  <form class="search-row" id="search-form" role="search" autocomplete="off">
-    <input id="search" type="search" placeholder="Search an address or place" aria-label="Search an address or place"
-      role="combobox" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false"
-      enterkeyhint="search" autocapitalize="off" spellcheck="false" />
-    <button type="button" id="use-geolocation" class="icon-btn" title="Use my location" aria-label="Use my location">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3" /><circle cx="12" cy="12" r="7.5" /></svg>
-    </button>
-    <ul id="suggestions" role="listbox" hidden></ul>
-  </form>
+  <main class="page-main">
+    <form class="search-row" id="search-form" role="search" autocomplete="off">
+      <input id="search" type="search" placeholder="Search an address or place" aria-label="Search an address or place"
+        role="combobox" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false"
+        enterkeyhint="search" autocapitalize="off" spellcheck="false" />
+      <button type="button" id="use-geolocation" class="icon-btn" title="Use my location" aria-label="Use my location">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3" /><circle cx="12" cy="12" r="7.5" /></svg>
+      </button>
+      <ul id="suggestions" role="listbox" hidden></ul>
+    </form>
 
-  <div id="map"></div>
-  <p class="hint" id="map-hint">Parking near the pin. Drag it, or tap the map, to look somewhere else.</p>
+    <div id="map"></div>
+    <p class="hint" id="map-hint">Parking near the pin. Drag it, or tap the map, to look somewhere else.</p>
 
-  <div class="filters">
-    <div class="zone-filter" id="zone-filter" role="group" aria-label="Zones">
-      <button type="button" data-zone="both" aria-pressed="true">All zones</button>
-      <button type="button" data-zone="blue" aria-pressed="false">Blue</button>
-      <button type="button" data-zone="white" aria-pressed="false">White</button>
+    <div class="filters">
+      <div class="zone-filter" id="zone-filter" role="group" aria-label="Zones">
+        <button type="button" data-zone="both" aria-pressed="true">All zones</button>
+        <button type="button" data-zone="blue" aria-pressed="false">Blue</button>
+        <button type="button" data-zone="white" aria-pressed="false">White</button>
+      </div>
+      <label class="stay-filter">
+        Stay
+        <select id="stay">
+          <option value="">Any</option>
+          <option value="30">30 min</option>
+          <option value="60">1 h</option>
+          <option value="120">2 h</option>
+          <option value="240">4 h</option>
+          <option value="480">8 h</option>
+        </select>
+      </label>
     </div>
-    <label class="stay-filter">
-      Stay
-      <select id="stay">
-        <option value="">Any</option>
-        <option value="30">30 min</option>
-        <option value="60">1 h</option>
-        <option value="120">2 h</option>
-        <option value="240">4 h</option>
-        <option value="480">8 h</option>
-      </select>
-    </label>
-  </div>
 
-  <p id="status" class="status" role="status" aria-live="polite" hidden></p>
-  <section id="disc" class="disc-card" hidden></section>
-  <h2 class="areas-heading" id="summary" aria-live="polite"></h2>
-  <ol id="areas" class="areas"></ol>
+    <p id="status" class="status" role="status" aria-live="polite" hidden></p>
+    <section id="disc" class="disc-card" hidden></section>
+    <h2 class="areas-heading" id="summary" aria-live="polite"></h2>
+    <ol id="areas" class="areas"></ol>
+  </main>
 
   <footer class="site-footer">
     <a href="privacy.html">Privacy policy</a> · <a href="terms.html">Terms of use</a>
