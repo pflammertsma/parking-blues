@@ -170,6 +170,7 @@ adb shell am start -n dev.lammertsma.parkingblues.debug/dev.lammertsma.parkingbl
   * Region: `europe-west1` (Belgium — chosen because Cloud Run custom domain mappings are unavailable in `europe-west6` Zurich).
   * Manual deploy script: `deploy/gcloud.sh <project-id> <billing-account-id>`
   * CI Workflow: `.github/workflows/deploy-backend.yml` automatically deploys on pushes touching `backend/`.
+* **Android releases to Play:** `.github/workflows/release-android.yml`, started by a `release-<N>` tag (internal tracks only) or by hand. **Read the publication rules in `deploy/play-publish-setup.md` before releasing**: only from `main`; the tag number equals `parkingblues.release`; tags never reach production; production is always a manual `draft` run of a build that was already tested on internal; fresh-install and privacy checks first.
 * **Frontend Hosting:**
   * Hosted at `https://lammertsma.dev/projects/parking-blues` via Firebase Hosting in `pflammertsma/lammertsma-dev`.
   * Published via `.github/workflows/publish-frontend.yml`, which runs `scripts/publish_to_lammertsma.py`. That script copies an explicit list of files (page, `app.js`, `style.css`, `icon.svg`, `privacy.html`, `terms.html`): add any new page or asset to it or it will never be published.

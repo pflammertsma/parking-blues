@@ -1,18 +1,27 @@
 name: Release Android to Play Console
 
-# Manual only -- this is the "we are certain" gate itself, not something that
-# should fire on every push. Builds both release bundles (phone + Android
+# Never runs on an ordinary push. Builds both release bundles (phone + Android
 # Auto, and Android Automotive OS -- see android/README.md's Release Builds
 # section) and uploads each to its own Play Console track. Needs a one-time
 # setup of the signing and Play API secrets below; see
-# deploy/play-publish-setup.md.
+# deploy/play-publish-setup.md, which also has the publication rules.
 #
-# Before running this: bump `parkingblues.release` (and `parkingblues.versionName`
+# Two ways to start it:
+#  * Push a tag `release-<N>`, where N is `parkingblues.release` in
+#    android/gradle.properties. That ALWAYS goes to the internal tracks, as
+#    "completed". A tag can never reach production.
+#  * Run it by hand (Actions -> Run workflow) to pick other tracks, e.g. to
+#    promote to production as a "draft".
+#
+# Before either: bump `parkingblues.release` (and `parkingblues.versionName`
 # if this is a user-visible version bump) in android/gradle.properties, commit
-# and push that first. This workflow builds whatever is on the branch it's
-# run against -- it does not bump the version itself, so the version bump
-# stays a deliberate, reviewable commit rather than something CI does silently.
+# and push that first. This workflow builds what is on the commit it runs
+# against -- it does not bump the version itself, so the bump stays a
+# deliberate, reviewable commit rather than something CI does silently.
 on:
+  push:
+    tags:
+      - "release-*"
   workflow_dispatch:
     inputs:
       app_track:
@@ -38,6 +47,11 @@ on:
         options: ["completed", "draft"]
         default: "completed"
 
+# Two releases at once could race on version codes and tracks.
+concurrency:
+  group: release-android
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -46,6 +60,27 @@ jobs:
         working-directory: android
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the "is this commit on main" check below needs history
+
+      # Rules for tag-started releases (see deploy/play-publish-setup.md):
+      # the commit must be on main, and the tag number must be the release number
+      # in the repo, so a stale or mistyped tag cannot upload the wrong build.
+      - name: Check the release tag
+        if: github.ref_type == 'tag'
+        working-directory: .
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::Tag $GITHUB_REF_NAME is not on main; release only from main"; exit 1; }
+          n=$(grep '^parkingblues.release=' android/gradle.properties | cut -d= -f2 | tr -d '\r')
+          [ "$GITHUB_REF_NAME" = "release-$n" ] \
+            || { echo "::error::Tag $GITHUB_REF_NAME does not match parkingblues.release=$n in android/gradle.properties"; exit 1; }
+
+      - name: Check the branch of a manual run
+        if: github.event_name == 'workflow_dispatch' && github.ref_name != 'main'
+        run: |
+          echo "::error::Run this workflow from main (it was started from ${{ github.ref_name }})"
+          exit 1
 
       - uses: actions/setup-java@v4
         with:
@@ -99,8 +134,8 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: dev.lammertsma.parkingblues
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
-          track: ${{ inputs.app_track }}
-          status: ${{ inputs.release_status }}
+          track: ${{ inputs.app_track || 'internal' }}
+          status: ${{ inputs.release_status || 'completed' }}
 
       - name: Upload Android Automotive OS bundle
         uses: r0adkll/upload-google-play@v1
@@ -108,5 +143,5 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: dev.lammertsma.parkingblues
           releaseFiles: android/automotive/build/outputs/bundle/release/automotive-release.aab
-          track: ${{ inputs.automotive_track }}
-          status: ${{ inputs.release_status }}
+          track: ${{ inputs.automotive_track || 'automotive:internal' }}
+          status: ${{ inputs.release_status || 'completed' }}
