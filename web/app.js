@@ -347,18 +347,34 @@ function setAccountPanelOpen(open) {
   if (open && !auth) prepareGoogleButton();
 }
 
+// "Jane Doe" -> "JD"; a bare email -> its first two letters. Keeps the top
+// bar to a fixed-size round avatar instead of a name that has to truncate.
+function accountInitials(nameOrEmail) {
+  const parts = nameOrEmail.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return nameOrEmail.trim().slice(0, 2).toUpperCase();
+}
+
 function renderAccount() {
   if (!GOOGLE_WEB_CLIENT_ID) return;
   $("account").hidden = false;
   $("signed-out").hidden = !!auth;
   $("signed-in").hidden = !auth;
-  // First name only: the top bar is tight on a phone. The panel shows the full name.
-  $("account-btn").textContent = auth
-    ? (auth.account.name || "").split(" ")[0] || auth.account.email || "Account"
-    : "Sign in";
+  const btn = $("account-btn");
+  btn.classList.toggle("avatar-btn", !!auth);
   if (auth) {
+    const label = auth.account.name || auth.account.email || "Account";
+    btn.textContent = "";
+    btn.setAttribute("aria-label", `Account: ${label}`);
+    const avatar = document.createElement("span");
+    avatar.className = "avatar";
+    avatar.textContent = accountInitials(label);
+    btn.appendChild(avatar);
     $("account-name").textContent = auth.account.name || auth.account.email;
     $("account-email").textContent = auth.account.name ? auth.account.email : "";
+  } else {
+    btn.textContent = "Sign in";
+    btn.removeAttribute("aria-label");
   }
 }
 
@@ -682,6 +698,7 @@ function setDestination({ lat, lng }, { label = "", push = true, fit = true } = 
   state.selected = null;
   destinationMarker.setLatLng([lat, lng]);
   $("search").value = label;
+  $("search-clear").hidden = label.length === 0;
   if (push) {
     state.destinationChosen = true;
     history.pushState({ zone: state.zone, stay: state.stay }, "", searchHash());
@@ -814,6 +831,28 @@ let activeSuggestion = -1;
 let suggestTimer = null;
 let suggestSeq = 0;
 
+// Collapsed -> just the search-toggle icon in the header; expanded -> the
+// input (plus clear/locate) replaces it, and on mobile takes over the whole
+// header -- see .topbar.search-expanded in style.css.
+const topbarEl = document.querySelector(".topbar");
+
+function setSearchExpanded(expanded) {
+  topbarEl.classList.toggle("search-expanded", expanded);
+  $("search-toggle").setAttribute("aria-expanded", String(expanded));
+}
+
+$("search-toggle").addEventListener("click", () => {
+  setSearchExpanded(true);
+  $("search").focus();
+});
+
+$("search-clear").addEventListener("click", () => {
+  $("search").value = "";
+  $("search-clear").hidden = true;
+  hideSuggestions();
+  setSearchExpanded(false);
+});
+
 function stripTags(html) {
   return html.replace(/<[^>]*>/g, "");
 }
@@ -885,6 +924,7 @@ async function fetchSuggestions(query) {
 $("search").addEventListener("input", () => {
   clearTimeout(suggestTimer);
   const query = $("search").value.trim();
+  $("search-clear").hidden = query.length === 0;
   if (query.length < 3) {
     suggestSeq++;
     hideSuggestions();
@@ -907,10 +947,14 @@ $("search").addEventListener("keydown", (event) => {
     if (suggestions.length) chooseSuggestion(Math.max(activeSuggestion, 0));
   } else if (event.key === "Escape") {
     hideSuggestions();
+    $("search").blur(); // triggers the blur listener's collapse, below
   }
 });
 
-$("search").addEventListener("blur", () => setTimeout(hideSuggestions, 150));
+$("search").addEventListener("blur", () => setTimeout(() => {
+  hideSuggestions();
+  setSearchExpanded(false);
+}, 150));
 
 // --- Full-screen map -------------------------------------------------------------
 // The real Fullscreen API where the browser allows it (no margins, no browser

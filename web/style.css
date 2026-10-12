@@ -295,6 +295,82 @@ button:disabled {
   border-color: transparent;
 }
 
+/* ---- Header search ---------------------------------------------------
+   Collapsed: just the toggle icon. Expanded (.topbar.search-expanded):
+   .search-row grows from 0 width to show the input, clear and locate
+   buttons, and the toggle hides -- so there's exactly one affordance for
+   "search" at a time, not a button sitting next to its own open field. */
+
+.header-search {
+  display: flex;
+  align-items: center;
+}
+
+.topbar.search-expanded #search-toggle {
+  display: none;
+}
+
+.search-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: width 0.2s ease, opacity 0.15s ease;
+}
+
+.topbar.search-expanded .search-row {
+  width: 17rem;
+  opacity: 1;
+  /* Collapsed .search-row clips via overflow: hidden so it can animate from
+     width: 0 without the (currently invisible) input/buttons poking out;
+     expanded, #suggestions -- an absolutely positioned child extending
+     below this box -- needs to actually be visible instead of clipped. */
+  overflow: visible;
+}
+
+.search-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* #search-clear (below) replaces the browser's own type="search" cancel
+   icon -- without this they'd both render, one inside the input and one
+   outside it. */
+.search-row input::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* Always visible once there's text (not hover-gated like a native
+   ::-webkit-search-cancel-button, and consistent across browsers). */
+#search-clear {
+  flex: none;
+}
+
+@media (max-width: 600px) {
+  /* The search field takes over the whole header while in use, instead of
+     competing for space with the brand, theme toggle and account button. */
+  .topbar.search-expanded .topbar-brand,
+  .topbar.search-expanded .theme-toggle,
+  .topbar.search-expanded .account {
+    display: none;
+  }
+
+  .topbar.search-expanded .topbar-actions {
+    flex: 1;
+  }
+
+  .topbar.search-expanded .header-search {
+    flex: 1;
+  }
+
+  .topbar.search-expanded .search-row {
+    width: 100%;
+  }
+}
+
 /* ---- Optional sign-in ------------------------------------------------ */
 
 .account {
@@ -306,6 +382,34 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The signed-in state: a round avatar (initials) instead of a truncated
+   name -- see renderAccount() in app.js. */
+#account-btn.avatar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  max-width: none;
+  padding: 0;
+  border-radius: 50%;
+  overflow: visible;
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
 }
 
 .account-panel {
@@ -753,18 +857,12 @@ input[type="radio"] {
   }
 }
 
-/* ---- Nearby parking: search, filters, areas ---------------------------- */
+/* ---- Nearby parking: filters, areas ---------------------------- */
 
-.search-row {
-  position: relative;
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
+/* .search-row's own layout (position/display/width/transition) is defined
+   with the rest of the header search near .theme-toggle, above -- it now
+   lives in the header, not here, but its *visual* input styling stays. */
 .search-row input {
-  flex: 1;
-  min-width: 0;
   min-height: 2.75rem;
   padding: 0 0.9rem;
   font: inherit;
