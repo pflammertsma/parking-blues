@@ -514,42 +514,30 @@ class MapSearchScreen(
                             .build()
                     )
                     .addAction(
+                        // Icon-only so it costs the strip almost no width; combines Zones
+                        // (always) and Developer options (debug builds only) so the strip
+                        // is a fixed 3 actions regardless of build type -- see MoreScreen's
+                        // doc for why (4 actions didn't reliably fit).
                         Action.Builder()
-                            .setTitle("Zones")
+                            .setIcon(
+                                CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_more))
+                                    .setTint(CarColor.DEFAULT)
+                                    .build()
+                            )
                             .setOnClickListener {
                                 screenManager.push(
-                                    ZoneScreen(
+                                    MoreScreen(
                                         carContext,
-                                        currentZone,
+                                        currentZone = currentZone,
                                         onZoneSelected = { startSearch(it) },
+                                        isDebuggableBuild = isDebuggableBuild,
+                                        testLocationEnabled = isTestLocationEnabled(carContext),
+                                        onTestLocationChanged = { setTestLocation(it) },
                                     )
                                 )
                             }
                             .build()
                     )
-                    .apply {
-                        // Icon-only so it costs the strip almost no width.
-                        if (isDebuggableBuild) {
-                            addAction(
-                                Action.Builder()
-                                    .setIcon(
-                                        CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_more))
-                                            .setTint(CarColor.DEFAULT)
-                                            .build()
-                                    )
-                                    .setOnClickListener {
-                                        screenManager.push(
-                                            DeveloperScreen(
-                                                carContext,
-                                                testLocationEnabled = isTestLocationEnabled(carContext),
-                                                onTestLocationChanged = { setTestLocation(it) },
-                                            )
-                                        )
-                                    }
-                                    .build()
-                            )
-                        }
-                    }
                     .build()
             )
             .build()
@@ -576,6 +564,17 @@ class MapSearchScreen(
      * and still posts a notification (harmless), but the notification's
      * tap target has nothing to resolve to there -- see
      * ParkingReminderScheduler's doc.
+     *
+     * Also best-effort syncs the spot to the account via
+     * repository.syncParkedSpot (backend/app.py's /api/me/parked), so a
+     * signed-in phone can read it back even without this local record --
+     * see that method's doc. This is the one piece of the "find my car from
+     * the phone" story that's actually wired up today: it needs a signed-in
+     * account to mean anything, and Android Automotive OS has no sign-in
+     * flow yet (TODO.md), so there this call predictably 401s and silently
+     * does nothing. A push notification on save (rather than only the
+     * passive "read it back next time you open the app" this enables) would
+     * need Firebase Cloud Messaging, which isn't set up.
      */
     private fun onParkedHereClicked() {
         val snapshot = repository.session.value ?: return
@@ -595,6 +594,20 @@ class MapSearchScreen(
             saveParkedSpot(carContext, spot)
             notifyParkingSaved(carContext, spot)
             if (spot.expiresAtEpochMillis != null) scheduleExpiryReminder(carContext, spot)
+            // Best-effort; see ParkingSessionRepository.syncParkedSpot's doc for
+            // why this is silent (and currently a no-op on :automotive).
+            repository.syncParkedSpot(
+                lat = spot.lat,
+                lon = spot.lon,
+                zoneType = when (spot.zoneType) {
+                    ZoneType.BLUE -> "blue"
+                    ZoneType.WHITE -> "white"
+                    null -> null
+                },
+                addressLabel = spot.addressLabel,
+                expiresAtEpochMillis = spot.expiresAtEpochMillis,
+                estimatedFeeChfPerHour = spot.estimatedFeeChfPerHour,
+            )
         }
     }
 
