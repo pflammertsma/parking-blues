@@ -72,11 +72,11 @@ These are the rules for putting a build in front of users. The workflow enforces
 | # | Rule | |
 |---|---|---|
 | 1 | **Only from `main`.** A tag must be on a commit that is on `main`; a manual run must be started from the `main` branch. | enforced |
-| 2 | **One number per release, for both apps.** `parkingblues.release` goes up by one for every upload (phone `1,000,000 + N`, Automotive `2,000,000 + N`); a version code can never be reused. The visible `parkingblues.versionName` changes only for a user-visible version. | Play rejects duplicates |
+| 2 | **One number per release, for both apps.** `parkingblues.release` goes up by one for every upload (phone `1,000,000 + N`, Automotive `2,000,000 + N`); a version code can never be reused. The visible version name follows from it (`<parkingblues.versionBase>.N`, e.g. `0.1.6`, the same string for both apps); `parkingblues.versionBase` changes only for a deliberate major/minor bump. | Play rejects duplicates |
 | 3 | **The tag is `release-<N>`** and `N` must equal `parkingblues.release` in the repo. | enforced |
 | 4 | **A tag only ever reaches the internal tracks** (`internal` and `automotive:internal`), as `completed`. Pushing a tag cannot publish to production. | enforced |
-| 5 | **Production is always a manual run with `draft`** and the production track names (`production`, `automotive:production`). A person then presses *Start rollout* in Play Console. Never `completed` on production. | how we work |
-| 6 | **Promote what was tested.** The same release number must have been on the internal tracks and checked on a device before it goes to production. Do not bump the number between internal and production; promote it. | how we work |
+| 5 | **Production is a promotion of the tested release, never a new upload.** Use Play Console, *Test and release, Testing, Internal testing, Promote release, Production* (do it once for the phone track and once on the Automotive form-factor track) and review before *Start rollout*. Do not run the release workflow against the production tracks: a version code can only be uploaded once, so it would fail with "version code already used". | how we work |
+| 6 | **Promote what was tested.** The release number promoted to production is the one that was on the internal tracks and checked on a device (rule 7). Do not bump the number between internal and production. | how we work |
 | 7 | **Fresh-install check before production.** Install the release build with no permissions granted, try Allow and Don't allow (`AGENTS.md`, gotcha 13), on the Play-less and the Play Automotive emulator, and send a test crash (About, long-press the version, Developer options). | how we work |
 | 8 | **Privacy first.** If a release changes what data is collected or sent, update `web/privacy.html` and the Play Data safety form *before* it goes to production. | how we work |
 | 9 | **Signing and secrets are checked, not assumed.** The run stops if the keystore, the Firebase config or the sign-in client id are missing, so a build can never silently lose crash reporting or sign-in. | enforced |
@@ -85,7 +85,7 @@ These are the rules for putting a build in front of users. The workflow enforces
 ### A normal release
 
 ```bash
-# 1. Bump android/gradle.properties: parkingblues.release=6   (and versionName if user-visible)
+# 1. Bump android/gradle.properties: parkingblues.release=6   (the name becomes 0.1.6 by itself)
 git commit -am "chore(release): release 6" && git push
 
 # 2. Tag it. The workflow tests, builds both bundles and uploads them to the internal tracks.
@@ -93,9 +93,9 @@ git tag release-6 && git push origin release-6
 
 # 3. Test on a device from the internal track (rule 7).
 
-# 4. Production: Actions -> Release Android to Play Console -> Run workflow, with
-#    app_track=production, automotive_track=automotive:production, release_status=draft.
-#    Then Play Console -> Production -> Start rollout.
+# 4. Production: in Play Console, promote that same release from Internal testing to Production,
+#    on the phone track and again on the Automotive form-factor track, then Start rollout.
+#    (Do not re-run the workflow for production: the version code is already uploaded.)
 ```
 
 ### Going back
@@ -106,8 +106,9 @@ are not downgraded. To fix a bad release, ship a new release with a higher numbe
 
 - **A tag** (`git tag release-6 && git push origin release-6`): internal tracks, `completed`. The tag
   must be on `main` and match `parkingblues.release`.
-- **By hand**: Actions, *Release Android to Play Console*, Run workflow. Choose the tracks and the
-  status. Production is always `draft`.
+- **By hand**: Actions, *Release Android to Play Console*, Run workflow. Choose the tracks, the status
+  and which bundle(s) to upload. Use it for a testing track or to retry one bundle; promoting to
+  production is done in Play Console (rule 5).
 
 Either way, watch the run; a rejected upload shows Play's own error message in the log. The
 rules above say when each is allowed.

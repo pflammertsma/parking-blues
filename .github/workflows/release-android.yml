@@ -13,9 +13,9 @@ name: Release Android to Play Console
 #  * Run it by hand (Actions -> Run workflow) to pick other tracks, e.g. to
 #    promote to production as a "draft".
 #
-# Before either: bump `parkingblues.release` (and `parkingblues.versionName`
-# if this is a user-visible version bump) in android/gradle.properties, commit
-# and push that first. This workflow builds what is on the commit it runs
+# Before either: bump `parkingblues.release` in android/gradle.properties (the
+# version name "<versionBase>.<release>" follows from it), commit and push that
+# first. This workflow builds what is on the commit it runs
 # against -- it does not bump the version itself, so the bump stays a
 # deliberate, reviewable commit rather than something CI does silently.
 on:

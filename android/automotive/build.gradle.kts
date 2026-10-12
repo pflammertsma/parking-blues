@@ -16,7 +16,8 @@ if (file("google-services.json").exists()) {
 }
 
 // Shared with the other app module via gradle.properties; see the comment there.
-val releaseNumber = providers.gradleProperty("parkingblues.release").get().toInt()
+val releaseNumber = rootProject.extra["parkingblues.releaseNumber"] as Int
+val releaseVersionName = rootProject.extra["parkingblues.versionName"] as String
 
 android {
     namespace = "dev.lammertsma.parkingblues.automotive"
@@ -31,7 +32,7 @@ android {
         minSdk = 29
         targetSdk = 37
         versionCode = 2 * 1_000_000 + releaseNumber
-        versionName = providers.gradleProperty("parkingblues.versionName").get()
+        versionName = releaseVersionName
     }
 
     buildTypes {
