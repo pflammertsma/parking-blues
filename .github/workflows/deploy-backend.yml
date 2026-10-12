@@ -39,6 +39,11 @@ jobs:
         run: |
           # CARTO's API key for the map tile proxy (backend/tiles.py) comes from Secret
           # Manager (secret parking-blues-carto-key) and is mounted on every deploy.
+          # A stale variable once pointed this at the deleted parking-blues-mvp project's
+          # client id and silently broke sign-in; refuse to deploy with it.
+          case "$GOOGLE_WEB_CLIENT_ID" in
+            794638973209-*) echo "::error::GOOGLE_WEB_CLIENT_ID is still the id of the deleted parking-blues-mvp project. Set the repository variable (Settings > Secrets and variables > Actions > Variables) to the web client id of the parking-blues project."; exit 1;;
+          esac
           SECRETS="CARTO_API_KEY=parking-blues-carto-key:latest"
           SIGN_IN_FLAGS=()
           if [ -n "$GOOGLE_WEB_CLIENT_ID" ]; then

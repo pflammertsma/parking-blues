@@ -100,7 +100,7 @@ jobs:
           mkdir -p keystore
           echo "${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}" | base64 -d > keystore/parking-blues-release.jks
           cat > keystore/keystore.properties <<EOF
-          storeFile=parking-blues-release.jks
+          storeFile=keystore/parking-blues-release.jks
           storePassword=${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
           keyPassword=${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
@@ -118,7 +118,12 @@ jobs:
       # The web client id for Google sign-in is baked into the app at build time (locally it
       # comes from ~/.gradle/gradle.properties). Without it the sign-in menu entry is hidden.
       - name: Check the sign-in client id
-        run: test -n "${{ vars.GOOGLE_WEB_CLIENT_ID }}" || { echo "::error::The GOOGLE_WEB_CLIENT_ID repository variable is not set"; exit 1; }
+        run: |
+          id="${{ vars.GOOGLE_WEB_CLIENT_ID }}"
+          test -n "$id" || { echo "::error::The GOOGLE_WEB_CLIENT_ID repository variable is not set"; exit 1; }
+          case "$id" in
+            794638973209-*) echo "::error::GOOGLE_WEB_CLIENT_ID is still the id of the deleted parking-blues-mvp project. Set the repository variable (Settings > Secrets and variables > Actions > Variables) to the web client id of the parking-blues project."; exit 1;;
+          esac
 
       - name: Unit tests
         run: ./gradlew testDebugUnitTest
