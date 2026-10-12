@@ -461,7 +461,10 @@ button:disabled {
   position: absolute;
   right: 0;
   top: calc(100% + 0.5rem);
-  z-index: 1000; /* above the Leaflet panes */
+  /* Leaflet's own controls (zoom, fullscreen) sit at z-index 1000 too and
+     come later in the DOM, so at the same z-index they'd render on top of
+     this panel -- matches #suggestions' z-index below for the same reason. */
+  z-index: 1100;
   width: 16rem;
   max-width: calc(100vw - 2rem);
   padding: 0.9rem;
@@ -506,7 +509,10 @@ button:disabled {
   position: absolute;
   right: 0;
   top: calc(100% + 0.5rem);
-  z-index: 1000; /* above the Leaflet panes */
+  /* Leaflet's own controls (zoom, fullscreen) sit at z-index 1000 too and
+     come later in the DOM, so at the same z-index they'd render on top of
+     this panel -- matches #suggestions' z-index below for the same reason. */
+  z-index: 1100;
   padding: 0.9rem;
   border: 1px solid var(--border);
   border-radius: 12px;
