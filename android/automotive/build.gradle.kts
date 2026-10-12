@@ -16,7 +16,7 @@ if (file("google-services.json").exists()) {
 }
 
 // Shared with the other app module via gradle.properties; see the comment there.
-val releaseNumber = rootProject.extra["parkingblues.releaseNumber"] as Int
+val versionCodeOffset = rootProject.extra["parkingblues.versionCodeOffset"] as Int
 val releaseVersionName = rootProject.extra["parkingblues.versionName"] as String
 
 android {
@@ -31,7 +31,7 @@ android {
         applicationId = "dev.lammertsma.parkingblues"
         minSdk = 29
         targetSdk = 37
-        versionCode = 2 * 1_000_000 + releaseNumber
+        versionCode = 2 * 1_000_000 + versionCodeOffset
         versionName = releaseVersionName
     }
 

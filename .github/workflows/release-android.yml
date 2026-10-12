@@ -7,14 +7,15 @@ name: Release Android to Play Console
 # deploy/play-publish-setup.md, which also has the publication rules.
 #
 # Two ways to start it:
-#  * Push a tag `release-<N>`, where N is `parkingblues.release` in
-#    android/gradle.properties. That ALWAYS goes to the internal tracks, as
-#    "completed". A tag can never reach production.
-#  * Run it by hand (Actions -> Run workflow) to pick other tracks, e.g. to
-#    promote to production as a "draft".
+#  * Push a tag `release-<version>` (e.g. release-0.1.6), where <version> is
+#    `parkingblues.version` in android/gradle.properties. That ALWAYS goes to
+#    the internal tracks, as "completed". A tag can never reach production.
+#  * Run it by hand (Actions -> Run workflow) to pick other testing tracks or
+#    to retry one bundle. Production is a promotion in Play Console, not an
+#    upload (a version code can only be uploaded once).
 #
-# Before either: bump `parkingblues.release` in android/gradle.properties (the
-# version name "<versionBase>.<release>" follows from it), commit and push that
+# Before either: bump `parkingblues.version` in android/gradle.properties (both
+# version codes are computed from it), commit and push that
 # first. This workflow builds what is on the commit it runs
 # against -- it does not bump the version itself, so the bump stays a
 # deliberate, reviewable commit rather than something CI does silently.
@@ -75,17 +76,17 @@ jobs:
           fetch-depth: 0 # the "is this commit on main" check below needs history
 
       # Rules for tag-started releases (see deploy/play-publish-setup.md):
-      # the commit must be on main, and the tag number must be the release number
-      # in the repo, so a stale or mistyped tag cannot upload the wrong build.
+      # the commit must be on main, and the tag must name the version in the repo,
+      # so a stale or mistyped tag cannot upload the wrong build.
       - name: Check the release tag
         if: github.ref_type == 'tag'
         working-directory: .
         run: |
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
             || { echo "::error::Tag $GITHUB_REF_NAME is not on main; release only from main"; exit 1; }
-          n=$(grep '^parkingblues.release=' android/gradle.properties | cut -d= -f2 | tr -d '\r')
-          [ "$GITHUB_REF_NAME" = "release-$n" ] \
-            || { echo "::error::Tag $GITHUB_REF_NAME does not match parkingblues.release=$n in android/gradle.properties"; exit 1; }
+          v=$(grep '^parkingblues.version=' android/gradle.properties | cut -d= -f2 | tr -d '\r')
+          [ "$GITHUB_REF_NAME" = "release-$v" ] \
+            || { echo "::error::Tag $GITHUB_REF_NAME does not match parkingblues.version=$v in android/gradle.properties"; exit 1; }
 
       - name: Check the branch of a manual run
         if: github.event_name == 'workflow_dispatch' && github.ref_name != 'main'

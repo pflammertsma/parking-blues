@@ -13,19 +13,25 @@ plugins {
     alias(libs.plugins.firebase.crashlytics) apply false
 }
 
-// One number drives the whole version. Bump `parkingblues.release` for every Play upload and
-// everything else follows, so the phone/Android Auto build and the Automotive build always carry
-// the same visible version while their codes stay a block of a million apart:
+// One string drives the whole version: `parkingblues.version` ("major.minor.patch", e.g. 0.2.0) in
+// gradle.properties. The versionName is that string as is, for both apps, and each form factor's
+// versionCode is computed from it, a block of a million apart:
 //
-//     release 6  ->  versionName "0.1.6" (both apps)
-//                    versionCode 1,000,006 (phone) / 2,000,006 (Automotive)
+//     versionCode = formFactor * 1,000,000 + major * 10,000 + minor * 100 + patch
 //
-// `parkingblues.versionBase` is the major.minor part and only changes on a deliberate, user-visible
-// version bump. The two modules read the results from here, so they cannot drift apart.
-val releaseNumber = providers.gradleProperty("parkingblues.release").get().toInt()
-require(releaseNumber in 1 until 1_000_000) {
-    "parkingblues.release must be between 1 and 999,999 (each form factor owns a block of a million codes)"
-}
-val versionBase = providers.gradleProperty("parkingblues.versionBase").get()
-extra["parkingblues.releaseNumber"] = releaseNumber
-extra["parkingblues.versionName"] = "$versionBase.$releaseNumber"
+//     0.1.6  ->  1,000,106 (phone / Android Auto)   2,000,106 (Automotive)
+//     0.2.0  ->  1,000,200                          2,000,200
+//     1.0.0  ->  1,010,000                          2,010,000
+//
+// Every part is 0..99, so a higher version is always a higher code. Play never accepts a code twice
+// or a lower one than before, so every upload needs a version higher than the last. The two modules
+// read the results from here, so they cannot drift apart.
+val appVersionName = providers.gradleProperty("parkingblues.version").get()
+val versionParts = Regex("""(\d{1,2})\.(\d{1,2})\.(\d{1,2})""").matchEntire(appVersionName)
+    ?.groupValues?.drop(1)?.map { it.toInt() }
+    ?: error("parkingblues.version must be major.minor.patch with each part 0..99, got '$appVersionName'")
+val versionCodeOffset = versionParts[0] * 10_000 + versionParts[1] * 100 + versionParts[2]
+// 1000005 and 2000005 were uploaded before this scheme; Play only accepts higher codes than those.
+require(versionCodeOffset > 5) { "parkingblues.version $appVersionName is below the codes already uploaded; use 0.0.6 or higher" }
+extra["parkingblues.versionName"] = appVersionName
+extra["parkingblues.versionCodeOffset"] = versionCodeOffset

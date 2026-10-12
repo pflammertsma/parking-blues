@@ -1,7 +1,7 @@
 # Automated Play Console releases
 
 `.github/workflows/release-android.yml` runs the unit tests, builds both release bundles and
-uploads each to its own Play Console track. It starts when you push a `release-<N>` tag (internal
+uploads each to its own Play Console track. It starts when you push a `release-<version>` tag (internal
 tracks only) or when you run it by hand (any track). It never runs on an ordinary push. It changes nothing until the secrets below exist, and it stops with a clear
 message if one is missing, rather than shipping a bundle without crash reporting or sign-in.
 
@@ -72,8 +72,8 @@ These are the rules for putting a build in front of users. The workflow enforces
 | # | Rule | |
 |---|---|---|
 | 1 | **Only from `main`.** A tag must be on a commit that is on `main`; a manual run must be started from the `main` branch. | enforced |
-| 2 | **One number per release, for both apps.** `parkingblues.release` goes up by one for every upload (phone `1,000,000 + N`, Automotive `2,000,000 + N`); a version code can never be reused. The visible version name follows from it (`<parkingblues.versionBase>.N`, e.g. `0.1.6`, the same string for both apps); `parkingblues.versionBase` changes only for a deliberate major/minor bump. | Play rejects duplicates |
-| 3 | **The tag is `release-<N>`** and `N` must equal `parkingblues.release` in the repo. | enforced |
+| 2 | **One version per release, for both apps.** `parkingblues.version` (`major.minor.patch`, each 0..99) goes up for every upload; it is the visible name of both apps and the version codes are computed from it: `formFactor * 1,000,000 + major * 10,000 + minor * 100 + patch`, phone 1 and Automotive 2. So `0.1.6` is 1000106 / 2000106 and `0.2.0` is 1000200 / 2000200. A code can never be reused or go down, so never ship a lower version than one already uploaded. | Play rejects duplicates |
+| 3 | **The tag is `release-<version>`** (`release-0.1.6`) and must equal `parkingblues.version` in the repo. | enforced |
 | 4 | **A tag only ever reaches the internal tracks** (`internal` and `automotive:internal`), as `completed`. Pushing a tag cannot publish to production. | enforced |
 | 5 | **Production is a promotion of the tested release, never a new upload.** Use Play Console, *Test and release, Testing, Internal testing, Promote release, Production* (do it once for the phone track and once on the Automotive form-factor track) and review before *Start rollout*. Do not run the release workflow against the production tracks: a version code can only be uploaded once, so it would fail with "version code already used". | how we work |
 | 6 | **Promote what was tested.** The release number promoted to production is the one that was on the internal tracks and checked on a device (rule 7). Do not bump the number between internal and production. | how we work |
@@ -85,11 +85,11 @@ These are the rules for putting a build in front of users. The workflow enforces
 ### A normal release
 
 ```bash
-# 1. Bump android/gradle.properties: parkingblues.release=6   (the name becomes 0.1.6 by itself)
-git commit -am "chore(release): release 6" && git push
+# 1. Bump android/gradle.properties: parkingblues.version=0.1.6   (the version codes follow from it)
+git commit -am "chore(release): 0.1.6" && git push
 
 # 2. Tag it. The workflow tests, builds both bundles and uploads them to the internal tracks.
-git tag release-6 && git push origin release-6
+git tag release-0.1.6 && git push origin release-0.1.6
 
 # 3. Test on a device from the internal track (rule 7).
 
@@ -104,8 +104,8 @@ are not downgraded. To fix a bad release, ship a new release with a higher numbe
 
 ## Starting a release
 
-- **A tag** (`git tag release-6 && git push origin release-6`): internal tracks, `completed`. The tag
-  must be on `main` and match `parkingblues.release`.
+- **A tag** (`git tag release-0.1.6 && git push origin release-0.1.6`): internal tracks, `completed`.
+  The tag must be on `main` and match `parkingblues.version`.
 - **By hand**: Actions, *Release Android to Play Console*, Run workflow. Choose the tracks, the status
   and which bundle(s) to upload. Use it for a testing track or to retry one bundle; promoting to
   production is done in Play Console (rule 5).
@@ -119,9 +119,9 @@ rules above say when each is allowed.
 |---|---|
 | `... is not set` at the start | One of the secrets or the `GOOGLE_WEB_CLIENT_ID` variable is missing (step 2) |
 | `Keystore was tampered with, or password was incorrect` | `ANDROID_RELEASE_STORE_PASSWORD` or `_KEY_PASSWORD` does not match `keystore.properties` |
-| `APK specifies a version code that has already been used` | `parkingblues.release` was not bumped before this run |
+| `APK specifies a version code that has already been used` | `parkingblues.version` was not bumped before this run |
 | `Track "X" could not be found` | Wrong track name for this listing (step 3) |
-| `Tag release-N does not match parkingblues.release=M` | The tag number and `android/gradle.properties` disagree; fix the file or the tag |
+| `Tag release-X does not match parkingblues.version=Y` | The tag and `android/gradle.properties` disagree; fix the file or the tag |
 | `Tag ... is not on main` | The tag points at a commit that is not on `main`; merge first, then tag |
 | `The caller does not have permission` | The service account was not invited, or lacks release permission for the app (step 1) |
 | Sign-in menu or crash-report switch missing in the released app | The Firebase secret or `GOOGLE_WEB_CLIENT_ID` was empty; the workflow should have stopped, check the first steps of the run |

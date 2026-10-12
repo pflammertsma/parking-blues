@@ -17,7 +17,7 @@ if (file("google-services.json").exists()) {
 }
 
 // Shared with the other app module via gradle.properties; see the comment there.
-val releaseNumber = rootProject.extra["parkingblues.releaseNumber"] as Int
+val versionCodeOffset = rootProject.extra["parkingblues.versionCodeOffset"] as Int
 val releaseVersionName = rootProject.extra["parkingblues.versionName"] as String
 
 android {
@@ -28,7 +28,7 @@ android {
         applicationId = "dev.lammertsma.parkingblues"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1 * 1_000_000 + releaseNumber
+        versionCode = 1 * 1_000_000 + versionCodeOffset
         versionName = releaseVersionName
         // The OAuth *web* client id (audience of Google ID tokens). Empty hides
         // the sign-in menu entry; see deploy/auth-setup.md.
