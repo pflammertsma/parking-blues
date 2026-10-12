@@ -22,15 +22,15 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      showgrid="false"
-     inkscape:zoom="0.90509668"
-     inkscape:cx="403.27184"
-     inkscape:cy="179.53883"
+     inkscape:zoom="1.8101934"
+     inkscape:cx="331.4563"
+     inkscape:cy="204.67427"
      inkscape:window-width="2688"
      inkscape:window-height="1341"
      inkscape:window-x="2188"
      inkscape:window-y="0"
      inkscape:window-maximized="0"
-     inkscape:current-layer="svg2" />
+     inkscape:current-layer="g1" />
   <g
      id="g1"
      inkscape:label="icon"
@@ -45,33 +45,35 @@
        transform="translate(-61.871845,174.56699)"
        inkscape:label="white" />
     <path
+       style="font-size:192px;line-height:1.25;font-family:'Snv Becker';-inkscape-font-specification:'Snv Becker';display:none;stroke-width:0.477769"
+       d="M 116.7895,250.72353 V 122.75478 h 54 q 14.4375,-0.0937 24.1875,9.84375 9.65625,10.21875 9.5625,24.375 v 4.21875 q 0,12.84375 -8.4375,22.59375 -10.21875,11.53125 -25.40625,11.4375 H 140.227 v 55.5 z m 23.4375,-76.78125 h 27.375 q 6,0 9.65625,-3.5625 3.84375,-3.75 3.84375,-9.1875 v -4.21875 q 0,-5.25 -3.84375,-9.09375 -3.75,-3.84375 -9.5625,-3.84375 H 140.227 Z"
+       id="text2"
+       transform="matrix(2.0930654,0,0,2.0930654,-82.765784,-153.73804)"
+       aria-label="P"
+       inkscape:label="P black" />
+    <path
        fill="#268bcc"
        d="M 0,0 V 474 H 474"
        id="path2"
        style="display:inline"
        inkscape:label="blue" />
     <path
-       style="font-size:192px;line-height:1.25;font-family:'Snv Becker';-inkscape-font-specification:'Snv Becker';display:none;stroke-width:0.477769"
-       d="M 116.7895,250.72353 V 122.75478 h 54 q 14.4375,-0.0937 24.1875,9.84375 9.65625,10.21875 9.5625,24.375 v 4.21875 q 0,12.84375 -8.4375,22.59375 -10.21875,11.53125 -25.40625,11.4375 H 140.227 v 55.5 z m 23.4375,-76.78125 h 27.375 q 6,0 9.65625,-3.5625 3.84375,-3.75 3.84375,-9.1875 v -4.21875 q 0,-5.25 -3.84375,-9.09375 -3.75,-3.84375 -9.5625,-3.84375 H 140.227 Z"
-       id="text2"
-       transform="matrix(2.0930654,0,0,2.0930654,-76.765784,-153.73804)"
-       aria-label="P"
-       inkscape:label="P" />
-    <path
-       id="path5"
-       style="font-size:192px;line-height:1.25;font-family:'Snv Becker';-inkscape-font-specification:'Snv Becker';display:inline;fill:#268bcc;stroke-width:0.477769"
-       d="m 116.78919,122.75496 v 27.69145 l 23.43814,23.43814 v -29.84852 h 27.4686 c 3.875,0 7.062,1.28148 9.562,3.84398 2.5625,2.5625 3.84398,5.59382 3.84398,9.09382 v 4.21826 c 0,3.625 -1.28148,6.68772 -3.84398,9.18772 -2.4375,2.375 -5.6559,3.56227 -9.6559,3.56227 h -27.31717 l 21.28173,21.28174 h 9.12887 c 10.125,0.0625 18.59425,-3.75053 25.40675,-11.43803 5.625,-6.5 8.43718,-14.0312 8.43718,-22.5937 v -4.21826 c 0.0625,-9.4375 -3.12516,-17.56267 -9.56266,-24.37517 -6.5,-6.62496 -14.56237,-9.90616 -24.18737,-9.8437 z"
-       transform="matrix(2.0930654,0,0,2.0930654,-76.765784,-153.73804)" />
-    <path
        id="path6"
-       style="font-size:192px;line-height:1.25;font-family:'Snv Becker';-inkscape-font-specification:'Snv Becker';display:inline;fill:#ffffff;stroke-width:0.477769"
-       d="m 116.78919,150.44641 v 100.27735 h 23.43814 v -55.49994 h 21.33926 l -21.28173,-21.28174 h -0.0575 v -0.0575 z"
-       transform="matrix(2.0930654,0,0,2.0930654,-76.765784,-153.73804)" />
+       style="font-size:192px;line-height:1.25;font-family:'Snv Becker';-inkscape-font-specification:'Snv Becker';display:inline;stroke-width:0.477769;fill:#ffffff"
+       inkscape:label="P white"
+       d="M 116.7892 150.69748 L 116.7892 250.72366 L 140.2269 250.72366 L 140.2269 195.22323 L 161.31495 195.22323 L 116.7892 150.69748 z "
+       transform="matrix(2.0930654,0,0,2.0930654,-82.765784,-153.73804)" />
+    <path
+       id="path7"
+       style="font-size:192px;line-height:1.25;font-family:'Snv Becker';-inkscape-font-specification:'Snv Becker';display:inline;stroke-width:0.477769;fill:#268bcc"
+       inkscape:label="P blue"
+       d="M 116.7892 122.75457 L 116.7892 150.69748 L 161.31495 195.22323 L 170.69581 195.22323 C 180.82081 195.28573 189.28994 191.47322 196.10244 183.78572 C 201.72744 177.28572 204.5399 169.75502 204.5399 161.19252 L 204.5399 156.97379 C 204.6024 147.53629 201.41457 139.41078 194.97707 132.59828 C 188.47707 125.97331 180.41413 122.69211 170.78913 122.75457 L 116.7892 122.75457 z M 140.2269 144.03579 L 167.69577 144.03579 C 171.57077 144.03579 174.75859 145.31689 177.25859 147.87939 C 179.82109 150.44189 181.1022 153.47379 181.1022 156.97379 L 181.1022 161.19252 C 181.1022 164.81752 179.82109 167.88022 177.25859 170.38022 C 174.82109 172.75522 171.60245 173.94202 167.60245 173.94202 L 140.2269 173.94202 L 140.2269 144.03579 z "
+       transform="matrix(2.0930654,0,0,2.0930654,-82.765784,-153.73804)" />
   </g>
   <g
      id="g9"
      inkscape:label="white zone"
-     style="display:inline">
+     style="display:none">
     <rect
        style="display:inline;fill:#ffffff;fill-opacity:1;stroke:#268bcc;stroke-width:22.6772;stroke-opacity:1"
        id="rect9"
@@ -92,7 +94,7 @@
   <g
      id="g10"
      inkscape:label="blue zone"
-     style="display:inline">
+     style="display:none">
     <rect
        style="display:inline;fill:#268bcc;fill-opacity:1;stroke:none;stroke-width:22.6772;stroke-opacity:1"
        id="rect10"
@@ -113,7 +115,7 @@
   <g
      id="g2"
      inkscape:label="destination"
-     style="display:inline">
+     style="display:none">
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:14.6667px;line-height:1.25;font-family:'Snv Becker';-inkscape-font-specification:'Snv Becker';stroke-width:0.150878"

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from assets/app icon.svg (474x474 viewBox). Edit that file and run
+     scripts/generate_app_icon.py rather than editing these paths. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="474"
+    android:viewportHeight="474">
+  <path
+      android:fillColor="#FFFFFF"
+      android:pathData="M 0,0 H 474 V 474 H 0 Z" />
+  <path
+      android:fillColor="#268BCC"
+      android:pathData="M 0,0 V 474 H 474 Z" />
+</vector>
