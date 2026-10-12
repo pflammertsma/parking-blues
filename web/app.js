@@ -379,11 +379,25 @@ function renderAccount() {
 }
 
 $("account-btn").addEventListener("click", () => setAccountPanelOpen($("account-panel").hidden));
+
+// The overflow menu (currently just the theme picker) follows the same
+// open/close pattern as the account panel, just for a different button/panel pair.
+function setOverflowPanelOpen(open) {
+  $("overflow-panel").hidden = !open;
+  $("overflow-btn").setAttribute("aria-expanded", String(open));
+}
+
+$("overflow-btn").addEventListener("click", () => setOverflowPanelOpen($("overflow-panel").hidden));
+
 document.addEventListener("click", (event) => {
   if (!$("account").contains(event.target)) setAccountPanelOpen(false);
+  if (!$("overflow-menu").contains(event.target)) setOverflowPanelOpen(false);
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") setAccountPanelOpen(false);
+  if (event.key === "Escape") {
+    setAccountPanelOpen(false);
+    setOverflowPanelOpen(false);
+  }
 });
 
 $("sign-out").addEventListener("click", async () => {

@@ -297,13 +297,17 @@ button:disabled {
 
 /* ---- Header search ---------------------------------------------------
    Collapsed: just the toggle icon. Expanded (.topbar.search-expanded):
-   .search-row grows from 0 width to show the input, clear and locate
-   buttons, and the toggle hides -- so there's exactly one affordance for
-   "search" at a time, not a button sitting next to its own open field. */
+   .search-row grows from 0 width to show the input (with its clear button
+   overlaid inside it) and the toggle hides -- so there's exactly one
+   affordance for "search" at a time, not a button sitting next to its own
+   open field. #use-geolocation lives outside .search-row -- see its own
+   comment in index.html -- so it isn't part of that collapse and stays
+   visible either way. */
 
 .header-search {
   display: flex;
   align-items: center;
+  gap: 0.4rem;
 }
 
 .topbar.search-expanded #search-toggle {
@@ -314,7 +318,6 @@ button:disabled {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
   width: 0;
   overflow: hidden;
   opacity: 0;
@@ -325,36 +328,75 @@ button:disabled {
   width: 17rem;
   opacity: 1;
   /* Collapsed .search-row clips via overflow: hidden so it can animate from
-     width: 0 without the (currently invisible) input/buttons poking out;
-     expanded, #suggestions -- an absolutely positioned child extending
-     below this box -- needs to actually be visible instead of clipped. */
+     width: 0 without the (currently invisible) input poking out; expanded,
+     #suggestions -- an absolutely positioned child extending below this
+     box -- needs to actually be visible instead of clipped. */
   overflow: visible;
 }
 
-.search-row input {
+/* Wraps the input so #search-clear can sit inside it instead of as a
+   separate button alongside the field. */
+.search-field {
+  position: relative;
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
-/* #search-clear (below) replaces the browser's own type="search" cancel
-   icon -- without this they'd both render, one inside the input and one
-   outside it. */
-.search-row input::-webkit-search-cancel-button {
+.search-field input {
+  width: 100%;
+}
+
+/* Replaces the browser's own type="search" cancel icon -- without this
+   they'd both render, one inside the input and one outside it. */
+.search-field input::-webkit-search-cancel-button {
   display: none;
 }
 
-/* Always visible once there's text (not hover-gated like a native
-   ::-webkit-search-cancel-button, and consistent across browsers). */
-#search-clear {
-  flex: none;
+/* Overlaid inside .search-field's right edge rather than taking its own
+   slot next to the input -- visible once there's text to clear (not
+   hover-gated like a native ::-webkit-search-cancel-button, and
+   consistent across browsers). */
+.search-clear {
+  position: absolute;
+  right: 0.3rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted-fg);
+}
+
+.search-clear:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: transparent;
+  color: var(--fg);
+}
+
+.search-clear svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
 }
 
 @media (max-width: 600px) {
   /* The search field takes over the whole header while in use, instead of
-     competing for space with the brand, theme toggle and account button. */
+     competing for space with the brand, account button and overflow menu.
+     #use-geolocation stays visible (see its own comment above). */
   .topbar.search-expanded .topbar-brand,
-  .topbar.search-expanded .theme-toggle,
-  .topbar.search-expanded .account {
+  .topbar.search-expanded .account,
+  .topbar.search-expanded .overflow-menu {
     display: none;
   }
 
@@ -366,8 +408,11 @@ button:disabled {
     flex: 1;
   }
 
+  /* flex: 1 (not width: 100%) so #use-geolocation, a flex sibling outside
+     .search-row, keeps its own width instead of being pushed off-screen. */
   .topbar.search-expanded .search-row {
-    width: 100%;
+    width: auto;
+    flex: 1;
   }
 }
 
@@ -449,6 +494,29 @@ button:disabled {
 
 .account-panel .danger {
   color: #ef5350;
+}
+
+/* ---- Overflow menu (theme) -------------------------------------------- */
+
+.overflow-menu {
+  position: relative;
+}
+
+.overflow-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  z-index: 1000; /* above the Leaflet panes */
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg); /* opaque: the glass surfaces would let the map show through */
+  box-shadow: var(--shadow);
+}
+
+.overflow-panel p {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
 }
 
 .reset-btn {
@@ -859,12 +927,14 @@ input[type="radio"] {
 
 /* ---- Nearby parking: filters, areas ---------------------------- */
 
-/* .search-row's own layout (position/display/width/transition) is defined
-   with the rest of the header search near .theme-toggle, above -- it now
-   lives in the header, not here, but its *visual* input styling stays. */
-.search-row input {
+/* .search-row/.search-field's own layout (position/display/width/
+   transition) is defined with the rest of the header search near
+   .header-search, above -- it now lives in the header, not here, but its
+   *visual* input styling stays. Right padding leaves room for #search-clear,
+   overlaid inside the field -- see .search-clear. */
+.search-field input {
   min-height: 2.75rem;
-  padding: 0 0.9rem;
+  padding: 0 2.4rem 0 0.9rem;
   font: inherit;
   color: var(--fg);
   background: var(--card-bg);
@@ -872,7 +942,7 @@ input[type="radio"] {
   border-radius: 8px;
 }
 
-.search-row input::placeholder {
+.search-field input::placeholder {
   color: var(--muted-fg);
 }
 
