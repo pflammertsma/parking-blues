@@ -21,19 +21,20 @@ was regenerated.
 | CI | New service account `parking-blues-deployer@parking-blues` with the same roles the old one had; its key replaces the GitHub secret `GCP_SA_KEY` | IAM, GitHub |
 | Domain | `api.parking-blues.lammertsma.dev` moved to the new service (the DNS record is unchanged: `CNAME ghs.googlehosted.com.`) | `gcloud beta run domain-mappings` |
 
+## Also done
+
+| Step | What |
+|---|---|
+| Sign-in clients | Recreated in `parking-blues`: one web client plus Android debug, upload-key and Play-signing clients. New web client id `447026018147-7g3o83oc6fa3ml25jbalsgqqsb0jjleb.apps.googleusercontent.com` (public, not a secret) |
+| Web client id | In `web/app.js`, in the GitHub variable `GOOGLE_WEB_CLIENT_ID`, and in `parkingblues.googleWebClientId` of the developer's `~/.gradle/gradle.properties` |
+| Cutover verified | The custom domain is served by the new Cloud Run service, and web sign-in works end to end |
+
 ## Still to do
 
-1. **Recreate the Google sign-in (OAuth) clients in `parking-blues`.** They live in the old project
-   and cannot be moved. Follow `deploy/auth-setup.md` steps 2 and 3 against `parking-blues`; you get
-   a **new web client id**. Until then the new service keeps using the old web client id (the old
-   clients still work), so sign-in is not broken, but the old project cannot be deleted.
-2. **Use the new web client id everywhere:**
-   - GitHub repository variable `GOOGLE_WEB_CLIENT_ID`, then redeploy the backend.
-   - `GOOGLE_WEB_CLIENT_ID` in `web/app.js`.
-   - `parkingblues.googleWebClientId` in your `~/.gradle/gradle.properties`, before building the next
-     release (the Android app).
-3. **Delete `parking-blues-mvp`**, only after the new setup has run for a few days and sign-in works
-   with the new clients. This is the one irreversible step (GCP keeps a deleted project for 30 days):
+1. **Build and ship the next Android release** so installed apps use the new web client id (releases
+   before this one have the old id baked in and cannot sign in against the new clients).
+2. **Delete `parking-blues-mvp`**, after a few days of everything working. This is the one
+   irreversible step (GCP keeps a deleted project for 30 days):
 
    ```bash
    gcloud projects delete parking-blues-mvp
@@ -42,6 +43,5 @@ was regenerated.
 ## Notes
 
 - `deploy/gcloud.sh` takes the project id as an argument, so it did not need changing.
-- The deployer's key was created as a file outside the repo; delete it once it is in GitHub.
 - If the old Firestore ever needs to be read again before step 3, it is still there in
   `parking-blues-mvp` (`europe-west6`).
