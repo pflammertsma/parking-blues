@@ -129,4 +129,30 @@ class ParkingSessionRepositoryDriveByTest {
         assertEquals("zh-far", finalSnapshot?.current?.id)
         assertEquals(listOf("zh-near"), finalSnapshot?.rejected?.map { it.id })
     }
+
+    // The car screen (MapSearchScreen.errorOrEmptyTemplate) shows "Searching..."
+    // instead of "No active search." while this is true, to cover the real
+    // wait on a Cloud Run cold start between the screen starting a search and
+    // the backend answering -- see its doc comment for the reported symptom.
+    @Test
+    fun startSearch_reportsLoadingWhileTheRequestIsInFlight() = runTest {
+        var loadingDuringRequest = false
+        val engine = MockEngine { request ->
+            loadingDuringRequest = true // observed from inside the in-flight call
+            respond(
+                content = json.encodeToString(
+                    snapshot(current = null, upcoming = emptyList(), rejected = emptyList(), you = LatLon(47.379198, 8.531307))
+                ),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val repository = ParkingSessionRepository(ParkingApiClient("https://test.invalid", engine))
+
+        assertEquals(false, repository.loading.value)
+        repository.startSearch(lat = 47.379198, lon = 8.531307, zone = ZoneFilter.BOTH)
+
+        assertEquals(true, loadingDuringRequest)
+        assertEquals(false, repository.loading.value) // cleared once the response lands
+    }
 }

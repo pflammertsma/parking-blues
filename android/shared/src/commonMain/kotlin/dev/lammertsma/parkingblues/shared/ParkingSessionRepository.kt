@@ -28,6 +28,15 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    // True only while the initial createSession call (startSearch) is in
+    // flight -- the car screen uses this to show "Searching..." instead of
+    // its empty-state message during that gap (which can be a real wait on
+    // a Cloud Run cold start, not just a flash). Other calls (position
+    // updates, reject, confirm, expand) already have a live session to keep
+    // showing while they're in flight, so they don't need this.
+    private val _loading = MutableStateFlow(false)
+    val loading: StateFlow<Boolean> = _loading.asStateFlow()
+
     // Remembered purely so a dropped session (see SessionNotFoundException's
     // doc) can be silently restarted with the same zone, rather than
     // needing the caller to re-supply it.
@@ -48,9 +57,11 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
         if (bearing != null) _bearing.value = bearing
         lastZone = zone
         lastDurationMinutes = durationMinutes
+        _loading.value = true
         runCatching { api.createSession(lat, lon, zone, durationMinutes) }
             .onSuccess { _session.value = it; _error.value = null }
             .onFailure { _error.value = it.message ?: "Failed to start search" }
+        _loading.value = false
     }
 
     /** Called continuously from live location updates -- see LocationSource on Android. */

@@ -170,6 +170,9 @@ class MapSearchScreen(
             repository.error.collect { invalidate() }
         }
         lifecycleScope.launch {
+            repository.loading.collect { invalidate() }
+        }
+        lifecycleScope.launch {
             repository.bearing.collect { bearing ->
                 if (bearing != null) {
                     lastBearing = bearing
@@ -643,7 +646,13 @@ class MapSearchScreen(
         get() = carContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
 
     private fun errorOrEmptyTemplate(): Template {
-        val message = repository.error.value ?: "No active search."
+        // The only time this shows with no error is the gap between this
+        // screen starting a search (init, below) and the backend answering
+        // -- a real wait on a Cloud Run cold start, not a flash. "No active
+        // search." there read as if nothing was happening/the driver needed
+        // to do something, rather than as a loading state.
+        val message = repository.error.value
+            ?: if (repository.loading.value) "Searching for parking…" else "No active search."
         val builder = MessageTemplate.Builder(message).setHeaderAction(Action.APP_ICON)
         if (repository.error.value != null) {
             builder.addAction(
