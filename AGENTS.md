@@ -98,7 +98,7 @@ The algorithm (candidate generation, DBSCAN clustering, scoring, retargeting hys
 5. **Shared App Icon:**
    * Launcher icons reside in `:car` (`res/mipmap-anydpi-v26/`) and merge into both `:app` and `:automotive`.
    * Launcher icons must remain in `mipmap*`, not `drawable*`.
-   * **One source: `assets/app icon.svg`** (Inkscape groups labelled `background` and `foreground`). After editing it run `python scripts/generate_app_icon.py`: that rewrites the adaptive layers `ic_launcher_background.xml` / `ic_launcher_foreground.xml` and copies the SVG to `web/icon.svg`. Re-render the 512 px Play icon with Inkscape (command in the script's docstring). Never hand-edit the generated XML.
+   * **Sources: `assets/app icon.svg`** (Inkscape groups labelled `background` and `foreground`) **and `assets/app icon monochrome.svg`** (a group labelled `monochrome`, the layer Android 13+ tints for themed icons). After editing either run `python scripts/generate_app_icon.py`: that rewrites the adaptive layers `ic_launcher_background.xml` / `ic_launcher_foreground.xml` and copies the SVG to `web/icon.svg`. Re-render the 512 px Play icon with Inkscape (command in the script's docstring). Never hand-edit the generated XML.
 6. **POI App Permissions:**
    * Declared as a POI app (`androidx.car.app.category.POI`).
    * Requires `<uses-permission android:name="androidx.car.app.MAP_TEMPLATES" />` and `<uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />`.

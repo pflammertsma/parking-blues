@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
-"""Regenerate the app icon from its one source, `assets/app icon.svg`.
+"""Regenerate the app icon from its sources in `assets/`.
 
-Run from the repo root after editing the SVG:
+Run from the repo root after editing an SVG:
 
     python scripts/generate_app_icon.py
 
-The SVG needs two top-level groups labelled `background` and `foreground` (Inkscape
-labels), a 474x474 canvas, and foreground paths that share one uniform
-`matrix(s,0,0,s,tx,ty)` transform. Writes the Android adaptive icon layers
-(android/car/src/main/res/mipmap-anydpi-v26/ic_launcher_{background,foreground}.xml) and
-copies the SVG to web/icon.svg (the web page's header icon).
+Sources (474x474 canvas, Inkscape layer labels, paths sharing one uniform
+`matrix(s,0,0,s,tx,ty)` transform):
+
+  assets/app icon.svg             groups labelled `background` and `foreground`
+  assets/app icon monochrome.svg  a group labelled `monochrome`: the same mark as a single
+                                  shape, which Android 13+ tints for "themed icons"
+
+Writes the Android adaptive icon layers into
+android/car/src/main/res/mipmap-anydpi-v26/ (ic_launcher_background.xml,
+ic_launcher_foreground.xml, ic_launcher_monochrome.xml, and the two adaptive-icon
+wrappers) and copies `app icon.svg` to web/icon.svg (the web page's header icon).
 
 The 512 px Play Store icon is not generated here; render it with Inkscape:
 
-    inkscape "assets/app icon.svg" --export-type=png       --export-filename=assets/play-store-icon-512.png -w 512 -h 512
+    inkscape "assets/app icon.svg" --export-type=png \\
+      --export-filename=assets/play-store-icon-512.png -w 512 -h 512
 """
 import re
 import shutil
@@ -22,54 +29,41 @@ from pathlib import Path
 
 ROOT = Path(".")
 SRC = ROOT / "assets" / "app icon.svg"
+SRC_MONO = ROOT / "assets" / "app icon monochrome.svg"
 RES = ROOT / "android" / "car" / "src" / "main" / "res"
 SVG = "{http://www.w3.org/2000/svg}"
 INK = "{http://www.inkscape.org/namespaces/inkscape}"
 
-tree = ET.parse(SRC)
-root = tree.getroot()
-assert root.get("width") == "474" and root.get("height") == "474", "unexpected canvas size"
 
-groups = {g.get(INK + "label"): g for g in root.iter(SVG + "g") if g.get(INK + "label")}
-assert {"background", "foreground"} <= set(groups), f"need background and foreground groups, got {set(groups)}"
+def load(path: Path):
+    root = ET.parse(path).getroot()
+    assert root.get("width") == "474" and root.get("height") == "474", f"{path.name}: unexpected canvas size"
+    groups = {g.get(INK + "label"): g for g in root.iter(SVG + "g") if g.get(INK + "label")}
+    return groups
 
-# ---------------------------------------------------------------- background
-bg = groups["background"]
-bg_shapes = []
-for el in bg:
-    tag = el.tag.replace(SVG, "")
-    style = el.get("style", "")
-    if tag == "rect":
-        # the full 474x474 square (its transform nets out to the origin)
-        assert (el.get("width"), el.get("height")) == ("474", "474")
-        fill = re.search(r"fill:(#[0-9a-fA-F]{6})", style).group(1)
-        bg_shapes.append((fill, "M 0,0 H 474 V 474 H 0 Z"))
-    elif tag == "path":
-        bg_shapes.append((el.get("fill"), el.get("d").strip() + " Z"))
-assert len(bg_shapes) == 2, bg_shapes
 
-# ---------------------------------------------------------------- foreground
-fg = groups["foreground"]
-fg_paths, transform = [], None
-for el in fg:
-    assert el.tag == SVG + "path", el.tag
-    t = el.get("transform", "")
-    m = re.fullmatch(r"matrix\(([-\d.]+),0,0,([-\d.]+),([-\d.]+),([-\d.]+)\)", t)
-    assert m, f"unsupported transform {t!r}"
-    a, d, e, f = m.groups()
-    assert a == d, "non-uniform scale"
-    current = (a, e, f)
-    assert transform in (None, current), "paths use different transforms"
-    transform = current
-    fill = re.search(r"fill:(#[0-9a-fA-F]{6})", el.get("style", "")).group(1)
-    fg_paths.append((fill, " ".join(el.get("d").split())))
-scale, tx, ty = transform
+def layer_paths(group, source):
+    """The (fill, pathData) of every path in a group, plus their shared (scale, tx, ty)."""
+    paths, transform = [], None
+    for el in group:
+        assert el.tag == SVG + "path", f"{source}: unexpected element {el.tag}"
+        t = el.get("transform", "")
+        m = re.fullmatch(r"matrix\(([-\d.]+),0,0,([-\d.]+),([-\d.]+),([-\d.]+)\)", t)
+        assert m, f"{source}: unsupported transform {t!r}"
+        a, d, e, f = m.groups()
+        assert a == d, f"{source}: non-uniform scale"
+        current = (a, e, f)
+        assert transform in (None, current), f"{source}: paths use different transforms"
+        transform = current
+        fill = re.search(r"fill:(#[0-9a-fA-F]{6})", el.get("style", "")).group(1)
+        paths.append((fill, " ".join(el.get("d").split())))
+    return paths, transform
 
 
 def vector(body: str) -> str:
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
-        '<!-- Generated from assets/app icon.svg (474x474 viewBox). Edit that file and run\n'
+        '<!-- Generated from assets/app icon*.svg (474x474 viewBox). Edit those files and run\n'
         '     scripts/generate_app_icon.py rather than editing these paths. -->\n'
         '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
         '    android:width="108dp"\n'
@@ -79,30 +73,68 @@ def vector(body: str) -> str:
     )
 
 
+def transformed(paths, transform, indent="    "):
+    scale, tx, ty = transform
+    return (
+        f'  <group\n      android:scaleX="{scale}"\n      android:scaleY="{scale}"\n'
+        f'      android:translateX="{tx}"\n      android:translateY="{ty}">\n'
+        + "".join(
+            f'{indent}<path\n{indent}    android:fillColor="{fill.upper()}"\n{indent}    android:pathData="{d}" />\n'
+            for fill, d in paths
+        )
+        + "  </group>\n"
+    )
+
+
+groups = load(SRC)
+assert {"background", "foreground"} <= set(groups), f"need background and foreground groups, got {set(groups)}"
+
+# ---------------------------------------------------------------- background
+bg_shapes = []
+for el in groups["background"]:
+    tag = el.tag.replace(SVG, "")
+    if tag == "rect":
+        # the full 474x474 square (its transform nets out to the origin)
+        assert (el.get("width"), el.get("height")) == ("474", "474")
+        fill = re.search(r"fill:(#[0-9a-fA-F]{6})", el.get("style", "")).group(1)
+        bg_shapes.append((fill, "M 0,0 H 474 V 474 H 0 Z"))
+    elif tag == "path":
+        bg_shapes.append((el.get("fill"), el.get("d").strip() + " Z"))
+assert len(bg_shapes) == 2, bg_shapes
 bg_xml = vector("".join(
     f'  <path\n      android:fillColor="{fill.upper()}"\n      android:pathData="{d}" />\n'
     for fill, d in bg_shapes
 ))
-fg_xml = vector(
-    f'  <group\n      android:scaleX="{scale}"\n      android:scaleY="{scale}"\n'
-    f'      android:translateX="{tx}"\n      android:translateY="{ty}">\n'
-    + "".join(
-        f'    <path\n        android:fillColor="{fill.upper()}"\n        android:pathData="{d}" />\n'
-        for fill, d in fg_paths
-    )
-    + "  </group>\n"
-)
+
+# ---------------------------------------------------------------- foreground
+fg_paths, fg_transform = layer_paths(groups["foreground"], SRC.name)
+fg_xml = vector(transformed(fg_paths, fg_transform))
+
+# --------------------------------------------------------------- monochrome
+mono_xml = None
+if SRC_MONO.exists():
+    mono_groups = load(SRC_MONO)
+    assert "monochrome" in mono_groups, f'{SRC_MONO.name} needs a group labelled "monochrome"'
+    mono_paths, mono_transform = layer_paths(mono_groups["monochrome"], SRC_MONO.name)
+    # Only the alpha matters: the system tints this layer to the wallpaper colours.
+    mono_xml = vector(transformed([("#000000", d) for _, d in mono_paths], mono_transform))
 
 mip = RES / "mipmap-anydpi-v26"
 (mip / "ic_launcher_background.xml").write_text(bg_xml, encoding="utf-8", newline="\n")
 (mip / "ic_launcher_foreground.xml").write_text(fg_xml, encoding="utf-8", newline="\n")
+mono_file = mip / "ic_launcher_monochrome.xml"
+if mono_xml:
+    mono_file.write_text(mono_xml, encoding="utf-8", newline="\n")
+elif mono_file.exists():
+    mono_file.unlink()
 
 adaptive = (
     '<?xml version="1.0" encoding="utf-8"?>\n'
     '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
     '  <background android:drawable="@mipmap/ic_launcher_background" />\n'
     '  <foreground android:drawable="@mipmap/ic_launcher_foreground" />\n'
-    '</adaptive-icon>\n'
+    + ('  <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />\n' if mono_xml else "")
+    + '</adaptive-icon>\n'
 )
 for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
     (mip / name).write_text(adaptive, encoding="utf-8", newline="\n")
@@ -110,5 +142,6 @@ for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
 # One source, kept in step: the web page's copy.
 shutil.copyfile(SRC, ROOT / "web" / "icon.svg")
 
-print("background shapes:", bg_shapes)
-print("foreground:", [(f, d[:40] + "...") for f, d in fg_paths], "transform", transform)
+print("background shapes:", len(bg_shapes))
+print("foreground paths:", len(fg_paths), "transform", fg_transform)
+print("monochrome:", "written" if mono_xml else "none (no assets/app icon monochrome.svg)")
