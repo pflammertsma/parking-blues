@@ -20,6 +20,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -46,6 +47,9 @@ fun AboutScreen(
     onLockDeveloper: () -> Unit,
     useTestLocation: Boolean,
     onUseTestLocationChanged: (Boolean) -> Unit,
+    crashReportsAvailable: Boolean,
+    crashReportsEnabled: Boolean,
+    onCrashReportsChanged: (Boolean) -> Unit,
     onOpenUrl: (String) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -104,6 +108,18 @@ fun AboutScreen(
                     },
                 )
 
+                if (crashReportsAvailable) {
+                    HorizontalDivider()
+                    ListItem(
+                        headlineContent = { Text("Send crash reports") },
+                        supportingContent = {
+                            Text("Anonymous: a stack trace and your device model. No location or searches.")
+                        },
+                        trailingContent = { Switch(checked = crashReportsEnabled, onCheckedChange = null) },
+                        modifier = Modifier.clickable { onCrashReportsChanged(!crashReportsEnabled) },
+                    )
+                }
+
                 if (developerUnlocked) {
                     HorizontalDivider()
                     Text(
@@ -117,6 +133,11 @@ fun AboutScreen(
                         supportingContent = { Text("Simulated driving in Zurich. Resets when the app restarts.") },
                         trailingContent = { Checkbox(checked = useTestLocation, onCheckedChange = null) },
                         modifier = Modifier.clickable { onUseTestLocationChanged(!useTestLocation) },
+                    )
+                    ListItem(
+                        headlineContent = { Text("Send a test crash") },
+                        supportingContent = { Text("Closes the app; the report arrives on the next launch.") },
+                        modifier = Modifier.clickable { error("Test crash from developer options") },
                     )
                     ListItem(
                         headlineContent = { Text("Hide developer options") },

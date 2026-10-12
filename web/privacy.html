@@ -32,7 +32,7 @@
   <div class="page-main">
   <main class="legal">
     <h2>Privacy Policy</h2>
-    <p class="meta">Last updated: 10 October 2026</p>
+    <p class="meta">Last updated: 12 October 2026</p>
 
     <p>
       Parking Blues helps drivers find legal on-street parking in Zurich. This policy
@@ -51,6 +51,7 @@
     <ul>
       <li>There are <strong>no ads and no analytics or tracking</strong>. Signing in with Google is <strong>optional</strong>; the app works without it.</li>
       <li>Your location is used only while you use the app, to find parking near you.</li>
+      <li>The Android app can send <strong>anonymous crash reports</strong> (no location, no searches), which you can switch off.</li>
       <li>The server keeps your search only in memory, and deletes it after at most two hours without activity.</li>
       <li>Where you parked is stored <strong>on your device only</strong>.</li>
       <li>We do not sell data or share it for advertising.</li>
@@ -105,6 +106,21 @@
       minimal record of the block for as long as needed to enforce it.
     </p>
 
+    <h4 id="crash-reports">Crash reports (Android app)</h4>
+    <p>
+      If the app crashes, it can send a report so the problem can be fixed. A report contains the
+      technical details of the crash (the stack trace), your device model and Android version, the
+      app version and a random installation identifier. It does <strong>not</strong> contain your
+      location, your searches, your account or where you parked. It is processed by Google
+      (Firebase Crashlytics), which may store it outside Switzerland, including in the United
+      States, and keeps it for about 90 days.
+    </p>
+    <p>
+      Crash reports are on by default in the released app and off in test builds. You can switch
+      them off at any time: in the phone app under About &gt; "Send crash reports", and in the car
+      under the "More" button. The web page does not send crash reports.
+    </p>
+
     <h4>Technical data in server logs</h4>
     <p>
       Like any online service, the server (hosted on Google Cloud, region Belgium) records
@@ -153,6 +169,11 @@
       <li>
         <strong>Google Cloud and Firebase Hosting</strong> host the server, the account
         database and this web page and may log requests as described above.
+      </li>
+      <li>
+        <strong>Google (crash reports).</strong> The Android app uses Firebase Crashlytics to
+        receive the anonymous crash reports described above. Google's privacy terms apply:
+        <a href="https://firebase.google.com/support/privacy" rel="noopener">firebase.google.com/support/privacy</a>.
       </li>
       <li>
         <strong>Address search (swisstopo).</strong> On the web page, the text you type into the
@@ -205,6 +226,7 @@
         <tr><td>Search and live position</td><td>Server memory</td><td>Up to 2 hours after last activity; lost on restart</td></tr>
         <tr><td>Rate-limit counters (IP address)</td><td>Server memory</td><td>Minutes to one day</td></tr>
         <tr><td>Server logs (IP, time, request, status)</td><td>Google Cloud Logging</td><td>About 30 days</td></tr>
+        <tr><td>Crash reports (stack trace, device model, installation id), unless switched off</td><td>Google Firebase Crashlytics</td><td>About 90 days</td></tr>
         <tr><td>Account (identifier, email, name, status), only if you sign in</td><td>Firestore, Zurich</td><td>Until you delete the account</td></tr>
         <tr><td>Last zone, parked spot</td><td>Your device</td><td>Until you clear it or uninstall</td></tr>
       </tbody>

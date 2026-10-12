@@ -44,6 +44,10 @@ dependencies {
     // permission, which is appropriate for a "remind me a few minutes
     // before" use case rather than a time-critical alarm.
     api(libs.androidx.work.runtime.ktx)
+    // Crash reporting (the Android implementation of :shared's CrashReporter). It only
+    // does anything when the app module applied the google-services plugin.
+    api(platform(libs.firebase.bom))
+    api(libs.firebase.crashlytics)
 
     testImplementation(kotlin("test"))
 }

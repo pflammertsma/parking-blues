@@ -6,6 +6,15 @@ plugins {
     id("parkingblues.release-signing")
 }
 
+// Crash reporting (Firebase Crashlytics) is optional: it needs google-services.json from
+// our Firebase project, which is deliberately not in the repository (it is gitignored).
+// Without the file the Firebase plugins are not applied and the app builds and runs as
+// before; the crash reporter then reports itself unavailable. See android/README.md.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
+}
+
 // Shared with the other app module via gradle.properties; see the comment there.
 val releaseNumber = providers.gradleProperty("parkingblues.release").get().toInt()
 

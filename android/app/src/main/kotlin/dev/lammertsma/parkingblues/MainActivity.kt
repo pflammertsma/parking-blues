@@ -197,6 +197,7 @@ class MainActivity : ComponentActivity() {
                 val useTestLocation = testMode == true
                 var page by rememberSaveable { mutableStateOf(Page.Main) }
                 var developerUnlocked by remember { mutableStateOf(isDeveloperUnlocked(this@MainActivity)) }
+                var crashReports by remember { mutableStateOf(crashReporter.isEnabled) }
                 BackHandler(enabled = page == Page.About) { page = Page.Main }
                 val authState by auth.state.collectAsState()
                 val authNotice by auth.notice.collectAsState()
@@ -221,6 +222,12 @@ class MainActivity : ComponentActivity() {
                         },
                         useTestLocation = useTestLocation,
                         onUseTestLocationChanged = { setUseTestLocation(it) },
+                        crashReportsAvailable = crashReporter.isAvailable,
+                        crashReportsEnabled = crashReports,
+                        onCrashReportsChanged = {
+                            crashReporter.isEnabled = it
+                            crashReports = crashReporter.isEnabled
+                        },
                         onOpenUrl = { url -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) },
                         onBack = { page = Page.Main },
                     )
@@ -289,6 +296,8 @@ class MainActivity : ComponentActivity() {
             startSearch(currentZone.value)
         }
     }
+
+    private val crashReporter get() = (application as ParkingBluesApp).crashReporter
 
     private fun toast(message: String) =
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()

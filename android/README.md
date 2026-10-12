@@ -100,3 +100,17 @@ Both share one `applicationId` (`dev.lammertsma.parkingblues`) and therefore one
 
 * **Backend Endpoint:** Defined as `DEFAULT_BASE_URL` in `ParkingApiClient.kt` (`shared/`), pointing to `https://api.parking-blues.lammertsma.dev`. Can be overridden directly via `ParkingApiClient(baseUrl = "http://localhost:5000")` for local development.
 * **Default Zurich Location:** When active GPS is unavailable or outside Zurich, location provider falls back to fixed Zurich coordinates (`47.379198, 8.531307`) defined in `TestLocation.kt`.
+
+## Crash reporting (optional)
+
+Release builds can report crashes to Firebase Crashlytics. It needs the Firebase project's
+`google-services.json`, which is **not** in the repository: download it from the Firebase console
+(project `parking-blues`, Project settings, Your apps) and put one copy in `app/` and one in
+`automotive/`. It is gitignored. Without it the Firebase plugins are not applied and everything
+builds and runs as before (the "Send crash reports" switch is simply not shown). Contributors who
+want reporting create their own Firebase project and register `dev.lammertsma.parkingblues` and
+`dev.lammertsma.parkingblues.debug`.
+
+Reports are off in debug builds and, in release builds, on unless the user switches them off.
+To check the pipeline: About, long-press the version, Developer options, "Send a test crash",
+reopen the app, and look in the console. See `AGENTS.md` for what may be reported.

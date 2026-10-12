@@ -1,5 +1,6 @@
 package dev.lammertsma.parkingblues.car
 
+import dev.lammertsma.parkingblues.shared.CrashReporter
 import dev.lammertsma.parkingblues.shared.ParkingSessionRepository
 
 /**
@@ -11,4 +12,7 @@ import dev.lammertsma.parkingblues.shared.ParkingSessionRepository
  */
 interface HasParkingRepository {
     val repository: ParkingSessionRepository
+
+    /** Crash reporting for this process; see [CrashReporter]. */
+    val crashReporter: CrashReporter
 }

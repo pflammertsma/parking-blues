@@ -1,8 +1,10 @@
 package dev.lammertsma.parkingblues.automotive
 
 import android.app.Application
+import dev.lammertsma.parkingblues.car.AndroidCrashReporter
 import dev.lammertsma.parkingblues.car.HasParkingRepository
 import dev.lammertsma.parkingblues.car.car.configureOsmdroid
+import dev.lammertsma.parkingblues.shared.CrashReporter
 import dev.lammertsma.parkingblues.shared.ParkingSessionRepository
 import dev.lammertsma.parkingblues.shared.api.ParkingApiClient
 
@@ -16,8 +18,12 @@ class ParkingAutomotiveApp : Application(), HasParkingRepository {
     override lateinit var repository: ParkingSessionRepository
         private set
 
+    override lateinit var crashReporter: CrashReporter
+        private set
+
     override fun onCreate() {
         super.onCreate()
+        crashReporter = AndroidCrashReporter(this).also { it.applyToSdk() }
         configureOsmdroid(this)
         repository = ParkingSessionRepository(ParkingApiClient())
     }
