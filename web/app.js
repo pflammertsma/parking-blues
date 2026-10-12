@@ -182,7 +182,7 @@ async function api(path, options = {}) {
 // opens the sign-in panel, so merely browsing contacts nobody extra. Leave the
 // ID empty to hide sign-in. Setup: deploy/auth-setup.md.
 const GOOGLE_WEB_CLIENT_ID =
-  "794638973209-r1ukb3sac08eeomf4kjve5aj8bkbga52.apps.googleusercontent.com";
+  "447026018147-7g3o83oc6fa3ml25jbalsgqqsb0jjleb.apps.googleusercontent.com";
 const AUTH_STORAGE_KEY = "parking-blues-auth";
 const ACCESS_TOKEN_MARGIN_MS = 60 * 1000;
 
