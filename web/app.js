@@ -70,8 +70,11 @@ const YOU_SVG =
 // visible on the dark map (the app only draws it on the light one).
 const DESTINATION_PATH =
   "M 208.81682,142.52539 V 330.35156 H 128.72112 L 238.09612,439.72656 347.47112,330.35156 H 267.37541 V 142.52539 Z";
+// The viewBox is the arrow plus its white outline (stroke 64), cropped to it:
+// the original 474 x 474 box cut the outline off at the bottom and left the
+// label floating above a blank margin.
 const DESTINATION_SVG =
-  '<svg viewBox="0 0 474 474" aria-hidden="true"><g transform="translate(-1.0961151 18.238238)">' +
+  '<svg viewBox="90 120 295 378" aria-hidden="true"><g transform="translate(-1.0961151 18.238238)">' +
   `<path fill="#fff" stroke="#fff" stroke-width="64" stroke-linejoin="round" d="${DESTINATION_PATH}" />` +
   `<path fill="#000" stroke="#000" stroke-width="22.68" d="${DESTINATION_PATH}" /></g></svg>`;
 
@@ -146,7 +149,7 @@ const destinationMarker = L.marker([ZURICH_CENTER.lat, ZURICH_CENTER.lng], {
     iconAnchor: [19, 37], // the arrow's tip (0.966 down, as in the app)
     tooltipAnchor: [0, -38],
   }),
-}).addTo(map).bindTooltip("Destination", { permanent: true, direction: "top", offset: [0, -2] });
+}).addTo(map).bindTooltip("Destination", { permanent: true, direction: "top", offset: [0, 5] });
 const areaLayer = L.layerGroup().addTo(map);
 
 async function api(path, options = {}) {
