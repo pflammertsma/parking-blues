@@ -2,6 +2,13 @@
 
 Open work, grouped by area. Tick items off (or delete them) as they land.
 
+## Parking route experiment
+
+- [ ] **Judge the experiment.** Drive some routes with the "parking route" button. Are the roads legal (one-ways, banned turns, tram and bus roads)? Are the stops worth the detour?
+- [ ] **If it works: self-host OSRM** (Zurich OSM extract on its own Cloud Run service; set `ROUTING_BASE_URL`, `ROUTING_MIN_INTERVAL_S=0`). The public demo server is not for production traffic.
+- [ ] **If the guidance is inaccurate: switch to Google routing** (a Google Routes implementation of `Router` in `backend/route_planner.py`; update `web/privacy.html` and the Play Data safety form, since positions would go to Google).
+- [ ] Tune `P_FREE` and `MIN_GAIN_S` from what drivers actually find.
+
 ## Phone UI: make it feel finished
 
 - [x] **Theme colours:** every Material 3 role is now defined (menus, buttons and containers no longer fall back to the baseline purple); contrast-checked light and dark palettes in `Theme.kt`.
