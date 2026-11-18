@@ -901,8 +901,7 @@ private fun SearchScreenContent(
     // Show the car when there is one to find: when a spot appears, and when the app is opened from
     // a parking notification. Both the driver and the car if they are apart, else just the car.
     val latestUser by rememberUpdatedState(userLocation)
-    LaunchedEffect(parkedSpot?.let { it.lat to it.lon }, showParkedTrigger) {
-        val spot = parkedSpot ?: return@LaunchedEffect
+    val showCar = { spot: ParkedSpot ->
         val car = GeoPoint(spot.lat, spot.lon)
         val here = latestUser?.takeIf { !outsideCoverage }
         // The car, plus the driver and the destination they were heading for if either is far
@@ -917,6 +916,9 @@ private fun SearchScreenContent(
                 ?.let { add(GeoPoint(it.lat, it.lon)) }
         }
         if (points.size > 1) mapState.fit = points else mapState.focus = car
+    }
+    LaunchedEffect(parkedSpot?.let { it.lat to it.lon }, showParkedTrigger) {
+        parkedSpot?.let(showCar)
     }
 
     // The destination pin was tapped: offer to make it the parking spot.
@@ -1015,7 +1017,7 @@ private fun SearchScreenContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 if (outsideCoverage) OutsideCoverageBanner()
-                parkedSpot?.let { ParkedCard(it, onWalkTo, onFoundCar) }
+                parkedSpot?.let { ParkedCard(it, showCar, onWalkTo, onFoundCar) }
                 (routeState as? RouteState.Ready)?.let { RouteSummary(it.route, onClearRoute) }
                 if (error != null) {
                     Text(
@@ -1127,7 +1129,12 @@ private fun zoneLabel(zone: ZoneFilter): String =
  * the spot drawn as a black pin.
  */
 @Composable
-private fun ParkedCard(spot: ParkedSpot, onWalkTo: (Double, Double) -> Unit, onFoundCar: () -> Unit) {
+private fun ParkedCard(
+    spot: ParkedSpot,
+    onShow: (ParkedSpot) -> Unit,
+    onWalkTo: (Double, Double) -> Unit,
+    onFoundCar: () -> Unit,
+) {
     // Where the driver was going, when it is somewhere other than where the car is.
     val destination = spot.destination?.takeIf {
         calculateDistanceMeters(spot.lat, spot.lon, it.lat, it.lon) > DESTINATION_APART_M
@@ -1142,6 +1149,8 @@ private fun ParkedCard(spot: ParkedSpot, onWalkTo: (Double, Double) -> Unit, onF
     }
     var menuOpen by remember { mutableStateOf(false) }
     Surface(
+        // It looks like something to tap, so it is: tapping it shows the car on the map.
+        onClick = { onShow(spot) },
         modifier = Modifier
             .widthIn(max = CARD_MAX_WIDTH)
             .fillMaxWidth()
