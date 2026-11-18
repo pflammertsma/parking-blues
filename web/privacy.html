@@ -133,11 +133,15 @@
 
     <h4>Stored on your device only</h4>
     <p>
-      The app remembers your last zone choice and, if you tap "Parked here", where and when
-      you parked (coordinates, the zone, an address label and the time limit when known).
-      This is kept in the app's private storage on your phone to show you where your car is
-      and to remind you before a blue-zone time limit runs out. It is <strong>not sent to
-      the server</strong> and is removed when you tap "I found my car" or uninstall the app.
+      The app remembers your last zone choice and where and when you parked (coordinates, the
+      zone, an address label and the time limit when known). That happens when you tap "Parked
+      here", when you set a spot on the map, or, if you drive with Android Auto, when Android
+      Auto disconnects: the app then assumes you parked at your last position of the drive and
+      says so. If you had picked a destination on the map, it is remembered with the spot so you
+      can be shown the walk to it. This is kept in the app's private storage on your phone to
+      show you where your car is and to remind you before a blue-zone time limit runs out. An
+      assumed spot is <strong>not sent to the server</strong>. The spot is removed when you tap
+      "I found my car" or "Clear", when Android Auto connects again, or when you uninstall the app.
     </p>
 
     <h4>Notifications</h4>
@@ -154,6 +158,15 @@
         address and which map tiles are requested, not your IP address; our server sees your
         IP address as described above. See
         <a href="https://carto.com/privacy" rel="noopener">CARTO's privacy policy</a>.
+      </li>
+      <li>
+        <strong>Route planning (OpenStreetMap routing, experimental).</strong> If you ask the
+        Android app to plan a parking route, your start point (your position) and the destination
+        you chose are sent to our server, which asks a public OpenStreetMap routing service
+        (the OSRM demo server, router.project-osrm.org) for driving times and the road route. The
+        routing service receives those coordinates from our server's address, not your IP address,
+        and nothing that identifies you. Our server does not store the request. This feature is an
+        experiment and the routing service may change.
       </li>
       <li>
         <strong>Google Play services and Android Auto.</strong> The Android app gets your
