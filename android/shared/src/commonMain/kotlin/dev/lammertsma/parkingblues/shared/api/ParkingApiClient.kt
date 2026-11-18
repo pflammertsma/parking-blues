@@ -2,6 +2,8 @@ package dev.lammertsma.parkingblues.shared.api
 
 import dev.lammertsma.parkingblues.shared.model.AccountInfo
 import dev.lammertsma.parkingblues.shared.model.AuthSession
+import dev.lammertsma.parkingblues.shared.model.LatLon
+import dev.lammertsma.parkingblues.shared.model.ParkingRoute
 import dev.lammertsma.parkingblues.shared.model.ParkedSpot
 import dev.lammertsma.parkingblues.shared.model.SessionSnapshot
 import dev.lammertsma.parkingblues.shared.model.ZoneFilter
@@ -85,6 +87,15 @@ private data class CreateSessionRequest(
 
 @Serializable
 private data class PositionRequest(val lat: Double, val lon: Double)
+
+@Serializable
+private data class RouteRequest(
+    val from: LatLon,
+    val to: LatLon,
+    val zone: String,
+    @SerialName("stay_minutes") val stayMinutes: Int? = null,
+    val exclude: List<String> = emptyList(),
+)
 
 @Serializable
 private data class IdTokenRequest(@SerialName("id_token") val idToken: String)
@@ -187,6 +198,23 @@ class ParkingApiClient private constructor(
         authorize()
         contentType(ContentType.Application.Json)
         setBody(CreateSessionRequest(lat, lon, zone.wireValue, durationMinutes))
+    }.bodyOrThrow()
+
+    /**
+     * EXPERIMENT (backend/route_planner.py): a drive from [from] to [to] passing the parking areas
+     * most likely to have a space. [exclude] are spots already driven past. The answer's status
+     * codes: 404 no parking near [to], 502 the routing service is down, 400 a bad request.
+     */
+    suspend fun planRoute(
+        from: LatLon,
+        to: LatLon,
+        zone: ZoneFilter,
+        stayMinutes: Int? = null,
+        exclude: List<String> = emptyList(),
+    ): ParkingRoute = http.post("$baseUrl/api/route") {
+        authorize()
+        contentType(ContentType.Application.Json)
+        setBody(RouteRequest(from, to, zone.wireValue, stayMinutes, exclude))
     }.bodyOrThrow()
 
     suspend fun getSession(sessionId: String): SessionSnapshot =

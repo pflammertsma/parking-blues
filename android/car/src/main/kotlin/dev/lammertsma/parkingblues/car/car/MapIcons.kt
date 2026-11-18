@@ -37,6 +37,9 @@ object MapIcons {
     const val CANDIDATE_DIAMETER_DP = 48 // 12dp original prototype x4
     const val ZONE_ICON_DP = 48
     const val DESTINATION_ICON_DP = 80 // doubled from the original 40dp XML intrinsic size
+    const val PARKED_PIN_DP = 96
+    const val PARKED_PIN_ANCHOR_X = 0.5f
+    const val PARKED_PIN_ANCHOR_Y = 22f / 24f // the pin's tip in ic_parked_pin.xml
 
     // The pin's tip in assets/destination.svg, as a fraction of its 474x474
     // viewBox (computed directly from the source path's own coordinates +
@@ -127,6 +130,11 @@ object MapIcons {
      *  "Destination" word also in that source file). */
     fun destinationMarkerIcon(context: Context, scale: Float = 1f): Drawable =
         vectorDrawableIcon(context, R.drawable.ic_destination, scaledDp(DESTINATION_ICON_DP, scale))
+
+    /** Where the car is parked: a classic black map pin with a white P. Anchor it at
+     *  ([PARKED_PIN_ANCHOR_X], [PARKED_PIN_ANCHOR_Y]), the pin's tip. */
+    fun parkedPinIcon(context: Context, scale: Float = 1f): Drawable =
+        vectorDrawableIcon(context, R.drawable.ic_parked_pin, scaledDp(PARKED_PIN_DP, scale))
 
     fun rejectedMarkerIcon(context: Context): Drawable = circleMarkerIcon(context, COLOR_REJECTED, CANDIDATE_DIAMETER_DP)
 

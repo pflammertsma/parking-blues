@@ -3,6 +3,7 @@ package dev.lammertsma.parkingblues
 import android.app.Application
 import dev.lammertsma.parkingblues.car.AndroidCrashReporter
 import dev.lammertsma.parkingblues.car.HasParkingRepository
+import dev.lammertsma.parkingblues.car.car.ParkedAutomation
 import dev.lammertsma.parkingblues.car.car.configureOsmdroid
 import dev.lammertsma.parkingblues.shared.AuthRepository
 import dev.lammertsma.parkingblues.shared.CrashReporter
@@ -37,5 +38,8 @@ class ParkingBluesApp : Application(), HasParkingRepository {
         )
         auth = AuthRepository(api, SecureTokenStore(this)) { System.currentTimeMillis() / 1000 }
         repository = ParkingSessionRepository(api)
+        // Android Auto disconnecting means the driver stopped (assume they parked); connecting
+        // again means they are driving again (forget it). Phone and Android Auto share this process.
+        ParkedAutomation(this, repository).start()
     }
 }

@@ -41,6 +41,7 @@ const val CONTACT_URL = "mailto:paul@lammertsma.dev"
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AboutScreen(
+    snackbarHostState: androidx.compose.material3.SnackbarHostState,
     versionLabel: String,
     developerUnlocked: Boolean,
     onUnlockDeveloper: () -> Unit,
@@ -54,6 +55,7 @@ fun AboutScreen(
     onBack: () -> Unit,
 ) {
     Scaffold(
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("About") },

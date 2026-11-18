@@ -668,6 +668,7 @@ class MapSearchScreen(
                 confirmedAtEpochMillis = System.currentTimeMillis(),
                 expiresAtEpochMillis = segment?.legalUntil?.let(::parseIsoToEpochMillis),
                 estimatedFeeChfPerHour = segment?.estimatedFeeChfPerHour,
+                destination = repository.destination.value,
             )
             saveParkedSpot(carContext, spot)
             notifyParkingSaved(carContext, spot)
@@ -757,8 +758,3 @@ class MapSearchScreen(
     }
 }
 
-/** ParkingSegment.legalUntil is an ISO-8601 offset datetime string, exactly
- *  as backend/blue_zone_rules.py emits it -- parsed, not recomputed, per
- *  the "backend owns the algorithm" rule (see ParkedSpot's doc). */
-private fun parseIsoToEpochMillis(iso: String): Long? =
-    runCatching { java.time.OffsetDateTime.parse(iso).toInstant().toEpochMilli() }.getOrNull()

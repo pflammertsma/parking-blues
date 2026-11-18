@@ -3,7 +3,6 @@ package dev.lammertsma.parkingblues.car.car
 import android.content.Intent
 import android.net.Uri
 import androidx.car.app.CarContext
-import androidx.car.app.CarToast
 import androidx.car.app.Screen
 import androidx.car.app.constraints.ConstraintManager
 import androidx.car.app.model.Action
@@ -132,8 +131,15 @@ class AreaScreen(
             carContext.startCarApp(Intent(CarContext.ACTION_NAVIGATE, uri))
         } catch (e: Exception) {
             // No navigation app installed (an emulator, or a car without one), or the
-            // host refused: say so instead of failing silently or crashing.
-            CarToast.makeText(carContext, "No navigation app available", CarToast.LENGTH_LONG).show()
+            // host refused: say so on a screen of our own (not a toast) instead of failing
+            // silently or crashing.
+            screenManager.push(
+                MessageScreen(
+                    carContext,
+                    title = "No navigation app",
+                    message = "No navigation app is available in the car. Install one on your phone to get directions.",
+                )
+            )
         }
     }
 }

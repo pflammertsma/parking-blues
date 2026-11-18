@@ -72,10 +72,16 @@ private fun parkedViewIntent(context: Context): PendingIntent {
 
 fun notifyParkingSaved(context: Context, spot: ParkedSpot) {
     ensureNotificationChannel(context)
-    val text = spot.addressLabel ?: "Tap to see where you parked"
+    // An assumed spot says so: nobody confirmed it, and it may be a street away from the truth.
+    val title = if (spot.assumed) "Assuming you parked here" else "Parking spot saved"
+    val text = if (spot.assumed) {
+        "Android Auto disconnected here. Tap to see it or correct it."
+    } else {
+        spot.addressLabel ?: "Tap to see where you parked"
+    }
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(dev.lammertsma.parkingblues.car.R.drawable.ic_destination)
-        .setContentTitle("Parking spot saved")
+        .setContentTitle(title)
         .setContentText(text)
         .setContentIntent(parkedViewIntent(context))
         .setAutoCancel(true)

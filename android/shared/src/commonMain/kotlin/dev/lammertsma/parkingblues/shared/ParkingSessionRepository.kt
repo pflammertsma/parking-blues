@@ -1,9 +1,11 @@
 package dev.lammertsma.parkingblues.shared
 
 import dev.lammertsma.parkingblues.shared.api.ParkingApiClient
+import dev.lammertsma.parkingblues.shared.api.ApiException
 import dev.lammertsma.parkingblues.shared.api.RateLimitedException
 import dev.lammertsma.parkingblues.shared.api.SessionNotFoundException
 import dev.lammertsma.parkingblues.shared.model.LatLon
+import dev.lammertsma.parkingblues.shared.model.ParkingRoute
 import dev.lammertsma.parkingblues.shared.model.SessionSnapshot
 import dev.lammertsma.parkingblues.shared.model.ZoneFilter
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +31,12 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
     // own `you` is the server's echo of some earlier fix.
     private val _livePosition = MutableStateFlow<LatLon?>(null)
     val livePosition: StateFlow<LatLon?> = _livePosition.asStateFlow()
+
+    // The destination the user chose on the map (a long press, "Search here"), as opposed to the
+    // search simply starting where they are. Remembered with the parked spot so the phone can offer
+    // a walk from the car to where the driver was really going.
+    private val _destination = MutableStateFlow<LatLon?>(null)
+    val destination: StateFlow<LatLon?> = _destination.asStateFlow()
 
     private val _bearing = MutableStateFlow<Float?>(null)
     val bearing: StateFlow<Float?> = _bearing.asStateFlow()
@@ -61,8 +69,10 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
         zone: ZoneFilter,
         durationMinutes: Int? = null,
         bearing: Float? = null,
+        destination: Boolean = false,
     ) {
         if (bearing != null) _bearing.value = bearing
+        _destination.value = if (destination) LatLon(lat, lon) else null
         _livePosition.value = LatLon(lat, lon)
         lastZone = zone
         lastDurationMinutes = durationMinutes
@@ -125,9 +135,48 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
         }
     }
 
+    /**
+     * EXPERIMENT: plans a parking route from [from] to [to]. Never touches the session or the
+     * error banner; the failure is the result, with a message fit for a toast. Spots the driver
+     * has already been past are left out.
+     */
+    suspend fun planRoute(from: LatLon, to: LatLon, zone: ZoneFilter): Result<ParkingRoute> {
+        val driven = _session.value?.rejected?.map { it.id }.orEmpty().takeLast(MAX_EXCLUDED)
+        return runCatching { api.planRoute(from, to, zone, exclude = driven) }
+            .recoverCatching { throw routeFailure(it) }
+    }
+
+    /**
+     * What went wrong, in words for the user, and whether trying again could help. The server says
+     * why with a `code` (backend/route_planner.py); a 404 or 405 with no code at all means the
+     * server does not have the route endpoint yet (an app newer than the server).
+     */
+    private fun routeFailure(failure: Throwable): RoutePlanException {
+        val (message, retryable) = when {
+            failure is RateLimitedException -> "Too many route requests. Try again in a minute." to false
+            failure is ApiException -> when (failure.code) {
+                "no_road_near_start" -> "You don't seem to be near a road." to false
+                "no_road_near_destination" -> "There is no road near that destination." to false
+                "not_connected" -> "There is no drivable route from here to there." to false
+                "no_parking_nearby" -> "No parking known near that destination." to false
+                "routing_busy" -> "Routing is busy right now. Try again in a moment." to true
+                "routing_unavailable" -> "Routing is unavailable right now. Try again later." to true
+                else -> when (failure.status) {
+                    404, 405 -> "Route planning isn't available on the server yet." to false
+                    400 -> "That route can't be planned from here." to false
+                    else -> "Couldn't plan the route." to true
+                }
+            }
+            // No answer at all: offline, or the server did not respond in time.
+            else -> "Couldn't reach the server to plan the route." to true
+        }
+        return RoutePlanException(message, failure, retryable)
+    }
+
     /** Back to the pristine pre-search state -- mirrors the web UI's Reset button. */
     fun reset() {
         _session.value = null
+        _destination.value = null
         _livePosition.value = null
         _bearing.value = null
         _error.value = null
@@ -166,5 +215,12 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
 
     private companion object {
         const val DEFAULT_BACKOFF_SECONDS = 10
+
+        /** The backend takes at most 500 excluded spot ids. */
+        const val MAX_EXCLUDED = 500
     }
 }
+
+/** A route could not be planned; the message is fit to show the user as it is. */
+class RoutePlanException(message: String, cause: Throwable, val retryable: Boolean = false) :
+    Exception(message, cause)

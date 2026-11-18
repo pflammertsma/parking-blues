@@ -1,7 +1,9 @@
 package dev.lammertsma.parkingblues.car.car
 
 import android.Manifest
+import android.app.Application
 import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.lifecycle.lifecycleScope
@@ -21,6 +23,12 @@ class ParkingCarSession : Session() {
     }
 
     override fun onCreateScreen(intent: Intent): Screen {
+        // The Automotive OS app has no phone to watch disconnect, but opening it means the driver
+        // is back in the car: forget where they parked last time. (On Android Auto this is done
+        // by ParkedAutomation when the connection comes back.)
+        if (carContext.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+            clearOnAutomotiveStart(carContext.applicationContext as Application, repository, lifecycleScope)
+        }
         if (hasLocationPermission(carContext)) {
             startLocationUpdates()
         } else {

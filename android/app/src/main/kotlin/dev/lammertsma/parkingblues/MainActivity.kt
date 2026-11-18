@@ -1,18 +1,19 @@
 package dev.lammertsma.parkingblues
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.SmallFloatingActionButton
@@ -35,9 +37,13 @@ import androidx.compose.ui.res.painterResource
 import org.osmdroid.util.GeoPoint
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -49,6 +55,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,11 +70,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -73,6 +90,17 @@ import dev.lammertsma.parkingblues.car.location.HeadingTracker
 import dev.lammertsma.parkingblues.car.location.PositionFilter
 import dev.lammertsma.parkingblues.car.location.compassHeadings
 import dev.lammertsma.parkingblues.car.car.EXTRA_SHOW_PARKED
+import dev.lammertsma.parkingblues.car.R as CarR
+import dev.lammertsma.parkingblues.car.car.NEARBY_LIMIT_M
+import dev.lammertsma.parkingblues.car.car.SheetState
+import dev.lammertsma.parkingblues.car.car.CoverageArea
+import dev.lammertsma.parkingblues.car.car.ParkedSpotFactory
+import dev.lammertsma.parkingblues.car.car.parkedSpotFlow
+import dev.lammertsma.parkingblues.car.car.scheduleExpiryReminder
+import dev.lammertsma.parkingblues.car.car.sheetState
+import dev.lammertsma.parkingblues.car.location.calculateDistanceMeters
+import kotlinx.coroutines.delay
+import dev.lammertsma.parkingblues.car.location.calculateDistanceMeters
 import dev.lammertsma.parkingblues.car.car.cancelExpiryReminder
 import dev.lammertsma.parkingblues.car.car.clearParkedSpot
 import dev.lammertsma.parkingblues.car.car.loadParkedSpot
@@ -87,9 +115,13 @@ import dev.lammertsma.parkingblues.car.location.testModeFlow
 import dev.lammertsma.parkingblues.shared.AuthRepository
 import dev.lammertsma.parkingblues.shared.AuthState
 import dev.lammertsma.parkingblues.shared.ParkingSessionRepository
+import dev.lammertsma.parkingblues.shared.RoutePlanException
+import dev.lammertsma.parkingblues.shared.model.LatLon
 import dev.lammertsma.parkingblues.shared.model.ParkedSpot
+import dev.lammertsma.parkingblues.shared.model.ParkingRoute
 import dev.lammertsma.parkingblues.shared.model.ZoneFilter
 import dev.lammertsma.parkingblues.shared.model.ZoneType
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -133,6 +165,7 @@ class MainActivity : ComponentActivity() {
     private val requestLocationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
+        locationDenied.value = !granted
         if (granted) {
             startLocationUpdates()
             if (repository.session.value == null) startSearch(currentZone.value)
@@ -151,12 +184,11 @@ class MainActivity : ComponentActivity() {
     // instead of needing an app restart.
     private var locationJob: Job? = null
 
-    // Compose state the Activity itself owns (not just `remember`-ed inside
-    // setContent's composable), since onNewIntent -- delivered to a
-    // singleTask Activity instance that's already running, not a fresh
-    // onCreate -- needs a way to push a new parked spot into the already-
-    // composed UI.
-    private val parkedSpot = mutableStateOf<ParkedSpot?>(null)
+    // Bumped when the app is opened from a parking notification (also while it is already running:
+    // onNewIntent of a singleTask Activity), so the map can show the car. The parked spot itself is
+    // observed from the store (parkedSpotFlow), which the car session and the Android Auto
+    // watcher write to as well.
+    private val showParkedTrigger = mutableIntStateOf(0)
     private val currentZone = mutableStateOf(ZoneFilter.BOTH)
 
     // The device's own position, tracked separately from the session's `you`:
@@ -168,6 +200,17 @@ class MainActivity : ComponentActivity() {
     // move `you` and auto-reject spots as if the user were driving past).
     private val browsing = mutableStateOf(false)
 
+    // True while the device is outside the area the app has maps for. The app then opens on
+    // Zurich to browse (a search there, as if "Show Zurich" was tapped) instead of a blank map.
+    private val outsideCoverage = mutableStateOf(false)
+
+    // The driver answered the location prompt with no: the sheet then offers Zurich instead of
+    // "Waiting for your location" for ever.
+    private val locationDenied = mutableStateOf(false)
+
+    // EXPERIMENT: the planned parking route (see backend/route_planner.py), if there is one.
+    private val routeState = mutableStateOf<RouteState>(RouteState.None)
+
     // Phone UI: GPS course while moving, the compass while standing still.
     private val headingTracker = HeadingTracker(useCompass = true)
     private val positionFilter = PositionFilter()
@@ -176,18 +219,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        parkedSpot.value = loadParkedSpot(this)
-        if (parkedSpot.value == null) {
+        if (intent.getBooleanExtra(EXTRA_SHOW_PARKED, false)) showParkedTrigger.intValue++
+        if (loadParkedSpot(this) == null) {
             // No local record (fresh install, app data cleared, a different
             // device parked it) -- the account may still remember it, e.g.
             // "Parked here" was tapped on Android Auto/AAOS and synced via
             // ParkingSessionRepository.syncParkedSpot. Best-effort: silently
             // stays null if signed out, offline, or nothing is on record.
             lifecycleScope.launch {
-                repository.fetchParkedSpot()?.let { spot ->
-                    parkedSpot.value = spot
-                    saveParkedSpot(this@MainActivity, spot)
-                }
+                repository.fetchParkedSpot()?.let { spot -> saveParkedSpot(this@MainActivity, spot) }
             }
         }
         currentZone.value = getLastZone(this)
@@ -195,6 +235,7 @@ class MainActivity : ComponentActivity() {
             ParkingBluesTheme {
                 val testMode by testModeFlow.collectAsState()
                 val useTestLocation = testMode == true
+                val parkedSpot by parkedSpotFlow(this@MainActivity).collectAsState()
                 var page by rememberSaveable { mutableStateOf(Page.Main) }
                 var developerUnlocked by remember { mutableStateOf(isDeveloperUnlocked(this@MainActivity)) }
                 var crashReports by remember { mutableStateOf(crashReporter.isEnabled) }
@@ -203,16 +244,17 @@ class MainActivity : ComponentActivity() {
                 val authNotice by auth.notice.collectAsState()
                 LaunchedEffect(authNotice) {
                     authNotice?.let {
-                        toast(it)
+                        message(it)
                         auth.clearNotice()
                     }
                 }
                 if (page == Page.About) {
                     AboutScreen(
+                        snackbarHostState = snackbars,
                         versionLabel = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                         developerUnlocked = developerUnlocked,
                         onUnlockDeveloper = {
-                            if (!developerUnlocked) toast("Developer options unlocked")
+                            if (!developerUnlocked) message("Developer options unlocked")
                             developerUnlocked = true
                             setDeveloperUnlocked(this@MainActivity, true)
                         },
@@ -228,22 +270,38 @@ class MainActivity : ComponentActivity() {
                             crashReporter.isEnabled = it
                             crashReports = crashReporter.isEnabled
                         },
-                        onOpenUrl = { url -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) },
+                        onOpenUrl = { url ->
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            } catch (_: ActivityNotFoundException) {
+                                message("No app found to open the link")
+                            }
+                        },
                         onBack = { page = Page.Main },
                     )
                 } else AppScaffold(
                     onAbout = { page = Page.About },
+                    snackbarHostState = snackbars,
+                    onMessage = { message(it) },
                     authState = authState,
                     signInAvailable = BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank(),
                     onSignIn = { signIn() },
                     onSignOut = { lifecycleScope.launch { auth.signOut() } },
                     onDeleteAccount = { deleteAccount() },
-                    spot = parkedSpot.value,
+                    spot = parkedSpot,
+                    showParkedTrigger = showParkedTrigger.intValue,
+                    onSetParkedHere = { setParkedHere() },
                     repository = repository,
                     currentZone = currentZone.value,
-                    onGetDirections = { spot -> openDirections(spot) },
+                    onWalkTo = { lat, lon -> openWalking(lat, lon) },
                     onFoundCar = { onFoundCar() },
                     userLocation = userLocation.value,
+                    outsideCoverage = outsideCoverage.value,
+                    destinationChosen = browsing.value,
+                    locationDenied = locationDenied.value,
+                    routeState = routeState.value,
+                    onPlanRoute = { planRoute() },
+                    onClearRoute = { clearRoute() },
                     heading = heading.value,
                     onZoneSelected = { zone -> switchZone(zone) },
                     onSearchHere = { lat, lon -> searchHere(lat, lon) },
@@ -276,13 +334,12 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.getBooleanExtra(EXTRA_SHOW_PARKED, false)) {
-            parkedSpot.value = loadParkedSpot(this)
-        }
+        if (intent.getBooleanExtra(EXTRA_SHOW_PARKED, false)) showParkedTrigger.intValue++
     }
 
     private fun setUseTestLocation(enabled: Boolean) {
         setTestLocationEnabled(this@MainActivity, enabled)
+        clearRoute()
         browsing.value = false
         userLocation.value = null
         // The real-GPS path needs the permission; the
@@ -299,47 +356,100 @@ class MainActivity : ComponentActivity() {
 
     private val crashReporter get() = (application as ParkingBluesApp).crashReporter
 
-    private fun toast(message: String) =
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    // Messages to the user are snackbars in the app (SnackbarHost in the sheet scaffold and the About
+    // screen), never system toasts: they follow the app theme, sit above the bottom sheet, can be
+    // dismissed, and can carry an action such as Retry.
+    private val snackbars = SnackbarHostState()
+
+    private fun message(text: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
+        lifecycleScope.launch {
+            snackbars.currentSnackbarData?.dismiss()
+            val result = snackbars.showSnackbar(
+                message = text,
+                actionLabel = actionLabel,
+                withDismissAction = actionLabel == null,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) onAction?.invoke()
+        }
+    }
 
     /** Optional: the app works anonymously; signing in only raises the request limits. */
     private fun signIn() {
         lifecycleScope.launch {
             val idToken = requestGoogleIdToken(this@MainActivity, BuildConfig.GOOGLE_WEB_CLIENT_ID)
                 .getOrElse { failure ->
-                    if (failure !is SignInCancelled) toast("Google sign-in failed: ${failure.message}")
+                    if (failure !is SignInCancelled) message("Google sign-in failed: ${failure.message}")
                     return@launch
                 }
             auth.signIn(idToken)
-                .onSuccess { toast("Signed in as ${it.email}") }
-                .onFailure { toast(it.message ?: "Sign-in failed") }
+                .onSuccess { message("Signed in as ${it.email}") }
+                .onFailure { message(it.message ?: "Sign-in failed") }
         }
     }
 
     private fun deleteAccount() {
         lifecycleScope.launch {
             auth.deleteAccount()
-                .onSuccess { toast("Your account was deleted") }
-                .onFailure { toast("Could not delete the account: ${it.message}") }
+                .onSuccess { message("Your account was deleted") }
+                .onFailure { message("Could not delete the account: ${it.message}") }
         }
     }
 
+    /** Forgets the parked spot. The map and any destination the driver is looking at stay as they are. */
     private fun onFoundCar() {
         clearParkedSpot(this)
         cancelExpiryReminder(this)
-        parkedSpot.value = null
-        browsing.value = false
-        repository.reset()
         // Best-effort: also clears the account's copy, so another signed-in
         // device (or this one, after a reinstall) doesn't keep offering a
         // spot the driver already found.
         lifecycleScope.launch { repository.clearParkedSpotSync() }
-        if (isTestLocationEnabled(this) || hasLocationPermission()) startSearch(currentZone.value)
     }
 
-    private fun openDirections(spot: ParkedSpot) {
-        val uri = Uri.parse("geo:${spot.lat},${spot.lon}?q=${spot.lat},${spot.lon}")
-        startActivity(Intent(Intent.ACTION_VIEW, uri))
+    /**
+     * The driver tapped the destination pin and said "this is where I parked". The pin is the
+     * spot, so it is saved as such (zone and time limit read from the nearest known parking spot,
+     * if any) and the pin turns into the parked pin.
+     */
+    private fun setParkedHere() {
+        val snapshot = repository.session.value ?: return
+        val spot = ParkedSpotFactory.at(
+            snapshot, snapshot.origin.lat, snapshot.origin.lon, System.currentTimeMillis(), assumed = false,
+        )
+        clearRoute()
+        saveParkedSpot(this, spot)
+        if (spot.expiresAtEpochMillis != null) scheduleExpiryReminder(this, spot)
+        lifecycleScope.launch {
+            // Best-effort, like "Parked here" in the car (see ParkingSessionRepository.syncParkedSpot).
+            repository.syncParkedSpot(
+                lat = spot.lat,
+                lon = spot.lon,
+                zoneType = spot.zoneType?.let { if (it == ZoneType.BLUE) "blue" else "white" },
+                addressLabel = spot.addressLabel,
+                expiresAtEpochMillis = spot.expiresAtEpochMillis,
+                estimatedFeeChfPerHour = spot.estimatedFeeChfPerHour,
+            )
+        }
+    }
+
+    /**
+     * Walking directions to a place, from wherever the phone is: Google Maps in walking mode when it
+     * is installed, otherwise any maps app showing the place.
+     */
+    private fun openWalking(lat: Double, lon: Double) {
+        val walking = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=$lat,$lon&mode=w"))
+            .setPackage("com.google.android.apps.maps")
+        val place = Intent(Intent.ACTION_VIEW, Uri.parse("geo:$lat,$lon?q=$lat,$lon"))
+        for (intent in listOf(walking, place)) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: ActivityNotFoundException) {
+                // Try the next one.
+            }
+        }
+        // No maps app at all (an emulator without one, a work profile): say so, do not crash.
+        message("No maps app found")
     }
 
     private fun hasLocationPermission() = ContextCompat.checkSelfPermission(
@@ -357,9 +467,68 @@ class MainActivity : ComponentActivity() {
                 val (lat, lon) = positionFilter.onFix(fix)
                 userLocation.value = lat to lon
                 heading.value = headingTracker.onFix(fix)
-                if (!browsing.value) repository.updatePosition(lat, lon)
+                val outside = !CoverageArea.contains(lat, lon)
+                val wasOutside = outsideCoverage.value
+                outsideCoverage.value = outside
+                if (outside) {
+                    // Nothing to follow out here: browse Zurich instead (once, not on every fix).
+                    if (!wasOutside) {
+                        browsing.value = true
+                        startSearch(currentZone.value, ZURICH_LAT to ZURICH_LON)
+                    }
+                    return@collect
+                }
+                if (wasOutside) {
+                    // Back in range: from browsing Zurich to live results around the device.
+                    browsing.value = false
+                    startSearch(currentZone.value)
+                    return@collect
+                }
+                if (!browsing.value) {
+                    val origin = repository.session.value?.origin
+                    if (origin != null && calculateDistanceMeters(origin.lat, origin.lon, lat, lon) > NEARBY_LIMIT_M) {
+                        // The session began somewhere else (the Zurich fallback used before the first
+                        // fix, or the user travelled far). Moving it would keep that place's spots
+                        // around a user who is nowhere near them, so search from here instead.
+                        startSearch(currentZone.value)
+                    } else {
+                        repository.updatePosition(lat, lon)
+                    }
+                }
             }
         }
+    }
+
+    /** Plans a parking route from the device to the chosen destination (the search's origin). */
+    private fun planRoute() {
+        val from = userLocation.value ?: return
+        val to = repository.session.value?.origin ?: return
+        if (routeState.value is RouteState.Planning) return
+        routeState.value = RouteState.Planning
+        lifecycleScope.launch {
+            repository.planRoute(LatLon(from.first, from.second), to, currentZone.value)
+                .onSuccess { route ->
+                    // The destination may have moved while the server was thinking.
+                    routeState.value =
+                        if (repository.session.value?.origin == to) RouteState.Ready(route) else RouteState.None
+                }
+                .onFailure {
+                    routeState.value = RouteState.None
+                    // Retry only where trying again could help (busy, down, offline), not where the
+                    // answer would be the same (no road near you, not available on the server).
+                    val retry = (it as? RoutePlanException)?.retryable == true
+                    message(
+                        it.message ?: "Couldn't plan the route.",
+                        actionLabel = if (retry) "Retry" else null,
+                        onAction = if (retry) ({ planRoute() }) else null,
+                    )
+                }
+        }
+    }
+
+    /** A route belongs to one destination, zone and start; anything that changes them drops it. */
+    private fun clearRoute() {
+        routeState.value = RouteState.None
     }
 
     /** Switching zones has no "change zone of an existing session" backend
@@ -367,12 +536,14 @@ class MainActivity : ComponentActivity() {
      *  zone from the current position (or the browsed area), same as the
      *  car screen. */
     private fun switchZone(zone: ZoneFilter) {
+        clearRoute()
         currentZone.value = zone
         setLastZone(this, zone)
         startSearch(zone)
     }
 
     private fun searchHere(lat: Double, lon: Double) {
+        clearRoute()
         browsing.value = true
         startSearch(currentZone.value, lat to lon)
     }
@@ -380,13 +551,17 @@ class MainActivity : ComponentActivity() {
     /** Leaving a browsed area: back to live results around the user. */
     private fun recenter() {
         if (browsing.value) {
+            clearRoute()
             browsing.value = false
             startSearch(currentZone.value)
         }
     }
 
     private fun startSearch(zone: ZoneFilter, at: Pair<Double, Double>? = null) {
-        if (!isTestLocationEnabled(this) && !hasLocationPermission()) {
+        // Only a search from the driver's own position needs the permission; looking at a place the
+        // driver chose (Show Zurich, a long press, Search here) works without it.
+        val aroundTheDriver = at == null && !(browsing.value && repository.session.value != null)
+        if (aroundTheDriver && !isTestLocationEnabled(this) && !hasLocationPermission()) {
             requestLocationPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION)
             return
         }
@@ -395,13 +570,23 @@ class MainActivity : ComponentActivity() {
                 repository.session.value?.origin?.let { it.lat to it.lon }
             } else null
             val existing = at ?: browsedOrigin ?: userLocation.value
-            val (lat, lon) = existing ?: lastKnownLocation(this@MainActivity) ?: run {
+            var (lat, lon) = existing ?: lastKnownLocation(this@MainActivity) ?: run {
                 // Last-resort default if lastKnownLocation somehow still
                 // comes back null (e.g. a permission edge case) -- same
                 // fallback web/app.js uses when geolocation isn't available.
                 47.379198 to 8.531307
             }
-            repository.startSearch(lat, lon, zone)
+            if (at == null && browsedOrigin == null && !CoverageArea.contains(lat, lon)) {
+                // The device is somewhere the app has no maps for. Whichever search this is (the
+                // first one at launch included), it becomes a look at Zurich, so a slower search
+                // from the real position cannot overwrite it with an empty one.
+                outsideCoverage.value = true
+                browsing.value = true
+                lat = ZURICH_LAT
+                lon = ZURICH_LON
+            }
+            // A destination the user chose (not the Zurich view shown to someone abroad).
+            repository.startSearch(lat, lon, zone, destination = browsing.value && !outsideCoverage.value)
         }
     }
 }
@@ -409,17 +594,27 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppScaffold(
+    snackbarHostState: SnackbarHostState,
+    onMessage: (String) -> Unit,
     authState: AuthState,
     signInAvailable: Boolean,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onDeleteAccount: () -> Unit,
     spot: ParkedSpot?,
+    showParkedTrigger: Int,
+    onSetParkedHere: () -> Unit,
     repository: ParkingSessionRepository,
     currentZone: ZoneFilter,
     userLocation: Pair<Double, Double>?,
+    outsideCoverage: Boolean,
+    destinationChosen: Boolean,
+    locationDenied: Boolean,
+    routeState: RouteState,
+    onPlanRoute: () -> Unit,
+    onClearRoute: () -> Unit,
     heading: Float?,
-    onGetDirections: (ParkedSpot) -> Unit,
+    onWalkTo: (Double, Double) -> Unit,
     onFoundCar: () -> Unit,
     onZoneSelected: (ZoneFilter) -> Unit,
     onSearchHere: (Double, Double) -> Unit,
@@ -429,14 +624,15 @@ private fun AppScaffold(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (spot != null) "You parked here" else "Parking Blues") },
+                title = { Text("Parking Blues") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = appBarContainerColor(),
                     titleContentColor = appBarContentColor(),
                     actionIconContentColor = appBarContentColor(),
                 ),
                 actions = {
-                    if (spot == null) {
+                    // The menu is always there: the parked spot no longer takes the screen over.
+                    run {
                         var menuOpen by remember { mutableStateOf(false) }
                         var zonePage by remember { mutableStateOf(false) }
                         var confirmDelete by remember { mutableStateOf(false) }
@@ -564,30 +760,136 @@ private fun AppScaffold(
             )
         },
     ) { innerPadding ->
-        if (spot != null) {
-            ParkedSpotContent(
-                spot = spot,
-                contentPadding = innerPadding,
-                onGetDirections = { onGetDirections(spot) },
-                onFoundCar = onFoundCar,
-            )
-        } else {
-            SearchScreenContent(
-                repository = repository,
-                userLocation = userLocation,
-                heading = heading,
-                contentPadding = innerPadding,
-                onSearchHere = onSearchHere,
-                onRecenter = onRecenter,
-            )
+        SearchScreenContent(
+            snackbarHostState = snackbarHostState,
+            onMessage = onMessage,
+            repository = repository,
+            userLocation = userLocation,
+            outsideCoverage = outsideCoverage,
+            destinationChosen = destinationChosen,
+            locationDenied = locationDenied,
+            routeState = routeState,
+            onPlanRoute = onPlanRoute,
+            onClearRoute = onClearRoute,
+            parkedSpot = spot,
+            showParkedTrigger = showParkedTrigger,
+            onWalkTo = onWalkTo,
+            onFoundCar = onFoundCar,
+            onSetParkedHere = onSetParkedHere,
+            heading = heading,
+            contentPadding = innerPadding,
+            onSearchHere = onSearchHere,
+            onRecenter = onRecenter,
+        )
+    }
+}
+
+/** Always shown while outside the covered area (no close button), and kept to one line. */
+@Composable
+private fun OutsideCoverageBanner() {
+    Surface(
+        modifier = Modifier.padding(top = 8.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shadowElevation = 2.dp,
+    ) {
+        Text(
+            "You\u2019re outside Zurich \u00b7 showing the city",
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        )
+    }
+}
+
+/** EXPERIMENT: the planned parking route's state in the UI. */
+sealed interface RouteState {
+    data object None : RouteState
+    data object Planning : RouteState
+    data class Ready(val route: ParkingRoute) : RouteState
+}
+
+/** What the route is, in two lines, with a way to dismiss it. */
+@Composable
+private fun RouteSummary(route: ParkingRoute, onClear: () -> Unit) {
+    val stops = route.stops.size
+    val minutes = (route.route.durationSeconds / 60.0).roundToInt().coerceAtLeast(1)
+    val chance = (route.chanceOfParking * 100).roundToInt()
+    Surface(
+        modifier = Modifier
+            .widthIn(max = CARD_MAX_WIDTH)
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        shape = MaterialTheme.shapes.large,
+        tonalElevation = 3.dp,
+        shadowElevation = 4.dp,
+    ) {
+        Row(
+            Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Parking route (experiment)", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "$stops stop${if (stops == 1) "" else "s"} \u00b7 ~$minutes min drive \u00b7 ~$chance% chance of a space",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // The road starts away from the driver: say so (the map shows the gap dashed).
+                route.startSnap?.let { gap ->
+                    Text(
+                        "The road starts ${gap.distanceM} m from you" + (if (gap.name.isNotBlank()) ", on ${gap.name}" else ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            IconButton(onClick = onClear) {
+                Icon(Icons.Default.Close, contentDescription = "Clear route")
+            }
         }
     }
 }
 
 @Composable
+private fun MapLoadingIndicator(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.large,
+        tonalElevation = 3.dp,
+        shadowElevation = 4.dp,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 3.dp)
+            Text("Loading map…", style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun SearchScreenContent(
+    snackbarHostState: SnackbarHostState,
+    onMessage: (String) -> Unit,
     repository: ParkingSessionRepository,
     userLocation: Pair<Double, Double>?,
+    outsideCoverage: Boolean,
+    destinationChosen: Boolean,
+    locationDenied: Boolean,
+    routeState: RouteState,
+    onPlanRoute: () -> Unit,
+    onClearRoute: () -> Unit,
+    parkedSpot: ParkedSpot?,
+    showParkedTrigger: Int,
+    onWalkTo: (Double, Double) -> Unit,
+    onFoundCar: () -> Unit,
+    onSetParkedHere: () -> Unit,
     heading: Float?,
     contentPadding: PaddingValues,
     onSearchHere: (Double, Double) -> Unit,
@@ -596,6 +898,46 @@ private fun SearchScreenContent(
     val error by repository.error.collectAsStateWithLifecycle()
     val session by repository.session.collectAsStateWithLifecycle()
     val mapState = remember { MapUiState() }
+    // Show the car when there is one to find: when a spot appears, and when the app is opened from
+    // a parking notification. Both the driver and the car if they are apart, else just the car.
+    val latestUser by rememberUpdatedState(userLocation)
+    LaunchedEffect(parkedSpot?.let { it.lat to it.lon }, showParkedTrigger) {
+        val spot = parkedSpot ?: return@LaunchedEffect
+        val car = GeoPoint(spot.lat, spot.lon)
+        val here = latestUser?.takeIf { !outsideCoverage }
+        // The car, plus the driver and the destination they were heading for if either is far
+        // enough from it to matter.
+        val points = buildList {
+            add(car)
+            if (here != null && calculateDistanceMeters(here.first, here.second, spot.lat, spot.lon) > FIT_BOTH_MIN_M) {
+                add(GeoPoint(here.first, here.second))
+            }
+            spot.destination
+                ?.takeIf { calculateDistanceMeters(it.lat, it.lon, spot.lat, spot.lon) > FIT_BOTH_MIN_M }
+                ?.let { add(GeoPoint(it.lat, it.lon)) }
+        }
+        if (points.size > 1) mapState.fit = points else mapState.focus = car
+    }
+
+    // The destination pin was tapped: offer to make it the parking spot.
+    var askSetParking by remember { mutableStateOf(false) }
+    if (askSetParking) {
+        AlertDialog(
+            onDismissRequest = { askSetParking = false },
+            title = { Text("Set as parking spot?") },
+            text = { Text("Mark this pin as where you parked, so you can find your car from here.") },
+            confirmButton = {
+                TextButton(onClick = { askSetParking = false; onSetParkedHere() }) { Text("Set parking spot") }
+            },
+            dismissButton = { TextButton(onClick = { askSetParking = false }) { Text("Cancel") } },
+        )
+    }
+
+    // Outside the covered area there is no position to follow and no arrow to draw.
+    LaunchedEffect(outsideCoverage) {
+        mapState.outsideCoverage = outsideCoverage
+        if (outsideCoverage) mapState.following = false
+    }
 
     // Only offer "Search here" once the map is meaningfully away from where
     // the current results are centered, i.e. after the user has panned.
@@ -608,69 +950,150 @@ private fun SearchScreenContent(
         }
     }
 
-    // A Box overlay, not a Column with the map as one of its children:
-    // AndroidView-hosted content (ParkingMapView's embedded osmdroid
-    // MapView) composites through its own interop surface, which draws
-    // above ordinary Compose siblings regardless of declared order --
-    // confirmed live, the chip row was being fully painted over by the
-    // map once it had real tiles to draw, not just a measurement/sizing
-    // issue. Overlays (the error banner) must be later siblings of the map
-    // in a Box rather than Column neighbors.
-    Box(
+    val sheetScaffold = rememberBottomSheetScaffoldState()
+    val scope = rememberCoroutineScope()
+    val hasLocation = userLocation != null
+    val sheet = remember(session, hasLocation, locationDenied) { sheetState(session, hasLocation, locationDenied) }
+    val bottomInset = contentPadding.calculateBottomPadding()
+    BackHandler(enabled = sheetScaffold.bottomSheetState.currentValue == SheetValue.Expanded) {
+        scope.launch { sheetScaffold.bottomSheetState.partialExpand() }
+    }
+
+    // The sheet reaches under the navigation bar (it adds that inset itself), so only the top of
+    // the Scaffold's padding is applied here.
+    BottomSheetScaffold(
+        scaffoldState = sheetScaffold,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        sheetPeekHeight = peekHeight(sheet) + bottomInset,
         modifier = Modifier
             .fillMaxSize()
-            .padding(contentPadding),
-    ) {
-        ParkingMapView(
-            repository = repository,
-            userLocation = userLocation,
-            heading = heading,
-            mapState = mapState,
-            modifier = Modifier.fillMaxSize(),
-        )
+            .padding(top = contentPadding.calculateTopPadding()),
+        sheetContent = {
+            ParkingSheetContent(
+                state = sheet,
+                bottomInset = bottomInset,
+                onMessage = onMessage,
+                onShowArea = { area ->
+                    mapState.focus = area.center
+                    scope.launch { sheetScaffold.bottomSheetState.partialExpand() }
+                },
+                onShowZurich = {
+                    // Not following the user: the map should stay where the search is.
+                    mapState.following = false
+                    onSearchHere(ZURICH_LAT, ZURICH_LON)
+                },
+            )
+        },
+    ) { sheetPadding ->
+        // A Box overlay, not a Column with the map as one of its children:
+        // AndroidView-hosted content (ParkingMapView's embedded osmdroid
+        // MapView) composites through its own interop surface, which draws
+        // above ordinary Compose siblings regardless of declared order --
+        // confirmed live, the chip row was being fully painted over by the
+        // map once it had real tiles to draw, not just a measurement/sizing
+        // issue. Overlays (the error banner) must be later siblings of the map
+        // in a Box rather than Column neighbors.
+        Box(modifier = Modifier.fillMaxSize()) {
+            ParkingMapView(
+                repository = repository,
+                userLocation = if (outsideCoverage) null else userLocation,
+                heading = heading,
+                mapState = mapState,
+                route = (routeState as? RouteState.Ready)?.route,
+                parked = parkedSpot,
+                onDestinationTapped = { askSetParking = true },
+                onDestinationPicked = { lat, lon ->
+                    // A deliberate pick: stay on it rather than following the device.
+                    mapState.following = false
+                    onSearchHere(lat, lon)
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
 
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (error != null) {
-                Text(
-                    "Error: $error",
-                    color = MaterialTheme.colorScheme.onError,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.error)
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                )
-            }
-            if (showSearchHere) {
-                Button(
-                    onClick = {
-                        mapState.center?.let { onSearchHere(it.latitude, it.longitude) }
-                    },
-                    modifier = Modifier.padding(top = 12.dp),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp, pressedElevation = 2.dp),
-                ) {
-                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Search here")
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (outsideCoverage) OutsideCoverageBanner()
+                parkedSpot?.let { ParkedCard(it, onWalkTo, onFoundCar) }
+                (routeState as? RouteState.Ready)?.let { RouteSummary(it.route, onClearRoute) }
+                if (error != null) {
+                    Text(
+                        "Error: $error",
+                        color = MaterialTheme.colorScheme.onError,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.error)
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                }
+                if (showSearchHere) {
+                    Button(
+                        onClick = {
+                            mapState.center?.let { onSearchHere(it.latitude, it.longitude) }
+                        },
+                        modifier = Modifier.padding(top = 12.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp, pressedElevation = 2.dp),
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Search here")
+                    }
                 }
             }
-        }
 
-        if (!mapState.following) {
-            SmallFloatingActionButton(
-                onClick = {
-                    mapState.following = true
-                    onRecenter()
-                },
+            // Until the first tile arrives. Not when the server says there is nothing here (the tile
+            // server only covers Zurich, so there it would spin for ever), and not after a timeout.
+            var gaveUpWaiting by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                delay(MAP_LOADING_TIMEOUT_MS)
+                gaveUpWaiting = true
+            }
+            if (!mapState.tilesLoaded && !gaveUpWaiting && sheet !is SheetState.Empty) {
+                MapLoadingIndicator(Modifier.align(Alignment.Center))
+            }
+
+            // EXPERIMENT: a route needs a destination to aim at and a start to drive from.
+            val canPlanRoute = destinationChosen && userLocation != null && !outsideCoverage
+            val routeReady = routeState is RouteState.Ready
+            Row(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
+                    .padding(bottom = sheetPadding.calculateBottomPadding())
                     .padding(16.dp),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Icon(painterResource(R.drawable.ic_my_location), contentDescription = "Recenter")
+                if (canPlanRoute) {
+                    SmallFloatingActionButton(
+                        onClick = onPlanRoute,
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) {
+                        if (routeState is RouteState.Planning) {
+                            CircularProgressIndicator(
+                                Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            Icon(painterResource(R.drawable.ic_route), contentDescription = "Plan a parking route")
+                        }
+                    }
+                }
+                if (!mapState.following && !outsideCoverage) {
+                    SmallFloatingActionButton(
+                        onClick = {
+                            mapState.following = true
+                            // With a route planned, Recenter only goes back to following the
+                            // device; otherwise it also leaves the destination (and its route).
+                            if (!routeReady) onRecenter()
+                        },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) {
+                        Icon(painterResource(R.drawable.ic_my_location), contentDescription = "Recenter")
+                    }
+                }
             }
         }
     }
@@ -678,83 +1101,113 @@ private fun SearchScreenContent(
 
 private const val SEARCH_HERE_MIN_DISTANCE_M = 75.0
 
+// Apart by more than this, showing the car also shows the driver; closer, just the car.
+private const val FIT_BOTH_MIN_M = 60.0
+
+// A remembered destination this close to the car is the car: no separate walk to offer.
+private const val DESTINATION_APART_M = 50.0
+
+// Floating cards over the map are no wider than this, however wide the screen is.
+private val CARD_MAX_WIDTH = 480.dp
+private const val MAP_LOADING_TIMEOUT_MS = 8_000L
+
+// Zurich main station: where "Show Zurich" looks, for a visitor outside the covered area.
+private const val ZURICH_LAT = 47.3779
+private const val ZURICH_LON = 8.5403
+
 private fun zoneLabel(zone: ZoneFilter): String =
     zone.name.lowercase().replaceFirstChar { it.uppercase() } +
         if (zone == ZoneFilter.BOTH) "" else " zones"
 
 /**
- * Shown instead of the search UI whenever a ParkedSpot is on record --
- * this takes over the phone app's whole launch surface rather than being
- * a tab/section, since "where's my car" is the only thing that matters
- * once it exists, same reasoning as the notification driving the user
- * here in the first place.
+ * Where the car is, at the top of the map for as long as a spot is on record (saved from the car,
+ * assumed when Android Auto disconnected, or set on the map). A slim bar, not a panel: the map is
+ * what matters, so it is one row (the pin, two short lines, walk to the car, and a menu for the rest)
+ * and no wider than [CARD_MAX_WIDTH] however wide the screen is. The map stays usable under it, with
+ * the spot drawn as a black pin.
  */
 @Composable
-private fun ParkedSpotContent(
-    spot: ParkedSpot,
-    contentPadding: PaddingValues,
-    onGetDirections: () -> Unit,
-    onFoundCar: () -> Unit,
-) {
-    Column(
+private fun ParkedCard(spot: ParkedSpot, onWalkTo: (Double, Double) -> Unit, onFoundCar: () -> Unit) {
+    // Where the driver was going, when it is somewhere other than where the car is.
+    val destination = spot.destination?.takeIf {
+        calculateDistanceMeters(spot.lat, spot.lon, it.lat, it.lon) > DESTINATION_APART_M
+    }
+    val expiresAt = spot.expiresAtEpochMillis
+    val blueDeadline = spot.zoneType == ZoneType.BLUE && expiresAt != null
+    val rules = when {
+        blueDeadline -> "Blue zone, legal until ${formatClockTime(expiresAt!!)}"
+        spot.zoneType == ZoneType.WHITE ->
+            spot.estimatedFeeChfPerHour?.let { "White zone, ~CHF %.2f/h".format(it) } ?: "White zone (metered)"
+        else -> null
+    }
+    var menuOpen by remember { mutableStateOf(false) }
+    Surface(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding)
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+            .widthIn(max = CARD_MAX_WIDTH)
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        shape = MaterialTheme.shapes.large,
+        tonalElevation = 3.dp,
+        shadowElevation = 4.dp,
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        Row(
+            Modifier.padding(start = 14.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
+            Image(
+                painterResource(CarR.drawable.ic_parked_pin),
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
                 Text(
-                    spot.addressLabel ?: "Unnamed spot",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    if (spot.assumed) "Assuming you parked here" else "You parked here",
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "Parked at ${formatClockTime(spot.confirmedAtEpochMillis)}",
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    "Since ${formatClockTime(spot.confirmedAtEpochMillis)}" + (rules?.let { " \u00b7 $it" } ?: ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (blueDeadline) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(4.dp))
-                val expiresAt = spot.expiresAtEpochMillis
-                when {
-                    spot.zoneType == ZoneType.BLUE && expiresAt != null ->
-                        Text(
-                            "Blue zone · legal until ${formatClockTime(expiresAt)}",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.error,
+            }
+            IconButton(onClick = { onWalkTo(spot.lat, spot.lon) }) {
+                Icon(painterResource(R.drawable.ic_walk), contentDescription = "Walk to car")
+            }
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More")
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (destination != null) {
+                        DropdownMenuItem(
+                            text = { Text("Walk to destination") },
+                            onClick = { menuOpen = false; onWalkTo(destination.lat, destination.lon) },
                         )
-                    spot.zoneType == ZoneType.WHITE ->
-                        Text(
-                            "White zone (metered)" +
-                                (spot.estimatedFeeChfPerHour?.let { " · ~CHF %.2f/h".format(it) } ?: ""),
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                    else -> Text(
-                        "No zone info recorded for this spot.",
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    }
+                    DropdownMenuItem(
+                        text = { Text(if (spot.assumed) "Clear" else "I found my car") },
+                        onClick = { menuOpen = false; onFoundCar() },
                     )
+                    if (spot.assumed) {
+                        // How to correct a wrong guess, where the driver looks when it is wrong.
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "Wrong place? Long-press the map, tap the pin and set it.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            },
+                            enabled = false,
+                            onClick = {},
+                        )
+                    }
                 }
             }
-        }
-
-        Button(
-            onClick = onGetDirections,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Walking directions")
-        }
-
-        OutlinedButton(
-            onClick = onFoundCar,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("I found my car")
         }
     }
 }

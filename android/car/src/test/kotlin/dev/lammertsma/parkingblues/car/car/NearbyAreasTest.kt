@@ -132,4 +132,38 @@ class NearbyAreasTest {
         val area = NearbyAreas.top(snapshot(segment("b", 50.0, legalUntil = null), emptyList()), 5).single()
         assertEquals("no time limit now", NearbyAreas.rules(area))
     }
+
+    @Test
+    fun overviewCountsEveryAreaAndItsSpaces() {
+        val a = listOf(segment("a", 100.0, capacity = 4), segment("b", 105.0, capacity = 2))
+        val b = segment("c", 250.0, zone = ZoneType.WHITE, capacity = 3)
+        val areas = NearbyAreas.all(snapshot(a[0], listOf(a[1], b)))
+
+        assertEquals("2 parking areas nearby · ~9 spaces", NearbyAreas.overviewTitle(areas))
+    }
+
+    @Test
+    fun overviewUsesTheSingularForOneAreaWithOneSpace() {
+        val areas = NearbyAreas.all(snapshot(segment("a", 100.0, capacity = 1), emptyList()))
+
+        assertEquals("1 parking area nearby · ~1 space", NearbyAreas.overviewTitle(areas))
+    }
+
+    @Test
+    fun theBestBetIsTheServersFirstChoiceNotTheNearest() {
+        // The current segment is ranked first by the server even though another one is closer.
+        val ranked = segment("far-but-first", 200.0)
+        val closer = segment("closer", 40.0, zone = ZoneType.WHITE)
+        val areas = NearbyAreas.all(snapshot(ranked, listOf(closer)))
+
+        assertEquals("Best bet: Blue zone · 200 m N", NearbyAreas.bestBet(areas))
+    }
+
+    @Test
+    fun withNothingFoundThereIsNoBestBetAndTheOverviewSaysSo() {
+        val areas = NearbyAreas.all(snapshot(null, emptyList()))
+
+        assertTrue(areas.isEmpty())
+        assertEquals(null, NearbyAreas.bestBet(areas))
+    }
 }

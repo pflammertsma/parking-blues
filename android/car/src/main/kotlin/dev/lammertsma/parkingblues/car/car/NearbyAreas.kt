@@ -43,6 +43,19 @@ object NearbyAreas {
             .take(limit)
     }
 
+    /** Every area around [snapshot]'s driver in the backend's order; [top] is the same list cut short. */
+    fun all(snapshot: SessionSnapshot): List<NearbyArea> = top(snapshot, Int.MAX_VALUE)
+
+    /** The one-line answer for a summary: "5 parking areas nearby · ~64 spaces". */
+    fun overviewTitle(areas: List<NearbyArea>): String {
+        val count = areas.size
+        val spaces = areas.sumOf { it.capacity }
+        return "$count parking area${if (count == 1) "" else "s"} nearby · ~$spaces space${if (spaces == 1) "" else "s"}"
+    }
+
+    /** What to try first, "Best bet: Blue zone · 120 m NE" ([areas] are already best first). */
+    fun bestBet(areas: List<NearbyArea>): String? = areas.firstOrNull()?.let { "Best bet: ${title(it)}" }
+
     /** "Blue zone · 120 m NE" */
     fun title(area: NearbyArea): String {
         val zone = if (area.cluster.zoneType == ZoneType.BLUE) "Blue zone" else "White zone"

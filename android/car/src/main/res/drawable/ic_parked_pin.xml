@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Where the car is parked: a classic map pin, black, with a white P. The pin's tip is at
+     (12, 22) of the 24x24 viewport (see MapIcons.PARKED_PIN_ANCHOR_Y). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#000000"
+        android:pathData="M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 7,-13c0,-3.87 -3.13,-7 -7,-7z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M9.2,5 H12.4 C14,5 15.2,6.2 15.2,7.7 C15.2,9.2 14,10.4 12.4,10.4 H10.9 V13 H9.2 Z M10.9,6.6 V8.8 H12.3 C12.9,8.8 13.5,8.3 13.5,7.7 C13.5,7.1 12.9,6.6 12.3,6.6 Z" />
+</vector>

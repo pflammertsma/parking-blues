@@ -33,4 +33,16 @@ data class ParkedSpot(
     @SerialName("confirmed_at_epoch_millis") val confirmedAtEpochMillis: Long,
     @SerialName("expires_at_epoch_millis") val expiresAtEpochMillis: Long?,
     @SerialName("estimated_fee_chf_per_hour") val estimatedFeeChfPerHour: Double? = null,
+    /**
+     * True when nobody pressed "Parked here": the app assumed the driver parked where Android Auto
+     * disconnected. Kept on-device only (never sent to the account), and shown as an assumption so
+     * the driver knows to correct it.
+     */
+    @SerialName("assumed") val assumed: Boolean = false,
+    /**
+     * Where the driver was heading when they parked (the destination chosen on the phone map),
+     * if there was one. The car may be some distance from it, so the phone offers a walk to either.
+     * On-device only, like [assumed].
+     */
+    @SerialName("destination") val destination: LatLon? = null,
 )
