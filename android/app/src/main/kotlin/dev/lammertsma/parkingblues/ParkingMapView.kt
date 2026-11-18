@@ -37,6 +37,8 @@ import dev.lammertsma.parkingblues.shared.model.ParkedSpot
 import dev.lammertsma.parkingblues.shared.model.ParkingRoute
 import dev.lammertsma.parkingblues.shared.model.SessionSnapshot
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.TileSystem
+import dev.lammertsma.parkingblues.car.car.ViewportFit
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
@@ -247,8 +249,27 @@ fun ParkingMapView(
         val points = mapState.fit ?: return@LaunchedEffect
         mapState.fit = null
         mapState.following = false
-        val box = BoundingBox.fromGeoPoints(points)
-        mapView.post { mapView.zoomToBoundingBox(box, false, PARKED_FIT_BORDER_PX) }
+        // Frame the points in the part of the map nobody covers: the parked bar and "Search here"
+        // are over the top, the sheet over the bottom (see ViewportFit).
+        mapView.post {
+            val density = context.resources.displayMetrics.density
+            val result = ViewportFit.fit(
+                points = points.map { it.latitude to it.longitude },
+                viewWidthPx = mapView.width,
+                viewHeightPx = mapView.height,
+                padding = ViewportFit.Padding(
+                    top = FIT_TOP_DP * density,
+                    bottom = FIT_BOTTOM_DP * density,
+                    sides = FIT_SIDES_DP * density,
+                ),
+                minZoom = mapView.minZoomLevel,
+                maxZoom = FIT_MAX_ZOOM,
+                mapSize = { zoom -> TileSystem.MapSize(zoom) },
+            )
+            mapView.controller.setZoom(result.zoom)
+            mapView.controller.setCenter(GeoPoint(result.centerLat, result.centerLon))
+            mapView.scrollBy(0, -result.scrollDownPx.roundToInt())
+        }
     }
 
     // A tapped list entry: show that area, and stop following so the next fix does not undo it.
@@ -461,8 +482,14 @@ private const val SAME_PLACE_M = 5.0
 /** Room left round a planned route when the map fits it (the sheet and the summary card cover some). */
 private const val ROUTE_FIT_BORDER_PX = 160
 
-/** More room when fitting the car: the parked card covers the top of the map. */
-private const val PARKED_FIT_BORDER_PX = 400
+/**
+ * Room kept free when the map frames the car and the driver: the parked bar and the "Search here"
+ * button cover the top, the bottom sheet the bottom, and the pin is about 50 dp tall above its tip.
+ */
+private const val FIT_TOP_DP = 190.0
+private const val FIT_BOTTOM_DP = 150.0
+private const val FIT_SIDES_DP = 40.0
+private const val FIT_MAX_ZOOM = 18.0
 
 /** The CARTO Positron land colour, so an empty map reads as map rather than as a grid. */
 private val PLACEHOLDER_COLOR = android.graphics.Color.parseColor("#F2F2EF")
