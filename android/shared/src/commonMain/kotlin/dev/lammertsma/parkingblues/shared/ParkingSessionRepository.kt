@@ -3,6 +3,7 @@ package dev.lammertsma.parkingblues.shared
 import dev.lammertsma.parkingblues.shared.api.ParkingApiClient
 import dev.lammertsma.parkingblues.shared.api.RateLimitedException
 import dev.lammertsma.parkingblues.shared.api.SessionNotFoundException
+import dev.lammertsma.parkingblues.shared.model.LatLon
 import dev.lammertsma.parkingblues.shared.model.SessionSnapshot
 import dev.lammertsma.parkingblues.shared.model.ZoneFilter
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,13 @@ import kotlin.time.TimeSource
 class ParkingSessionRepository(private val api: ParkingApiClient) {
     private val _session = MutableStateFlow<SessionSnapshot?>(null)
     val session: StateFlow<SessionSnapshot?> = _session.asStateFlow()
+
+    // Where the driver is *now*: the latest fix, published the moment it arrives and not when the
+    // server has answered. The map draws the "you" marker and follows the camera from this, so the
+    // map keeps moving through slow responses, a 429 pause or a restarting session; the snapshot's
+    // own `you` is the server's echo of some earlier fix.
+    private val _livePosition = MutableStateFlow<LatLon?>(null)
+    val livePosition: StateFlow<LatLon?> = _livePosition.asStateFlow()
 
     private val _bearing = MutableStateFlow<Float?>(null)
     val bearing: StateFlow<Float?> = _bearing.asStateFlow()
@@ -55,6 +63,7 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
         bearing: Float? = null,
     ) {
         if (bearing != null) _bearing.value = bearing
+        _livePosition.value = LatLon(lat, lon)
         lastZone = zone
         lastDurationMinutes = durationMinutes
         _loading.value = true
@@ -67,6 +76,7 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
     /** Called continuously from live location updates -- see LocationSource on Android. */
     suspend fun updatePosition(lat: Double, lon: Double, bearing: Float? = null) {
         if (bearing != null) _bearing.value = bearing
+        _livePosition.value = LatLon(lat, lon)
         val id = _session.value?.sessionId ?: return
         if (resumeUpdatesAt?.hasNotPassedNow() == true) return
         runCatching { api.updatePosition(id, lat, lon) }
@@ -118,6 +128,7 @@ class ParkingSessionRepository(private val api: ParkingApiClient) {
     /** Back to the pristine pre-search state -- mirrors the web UI's Reset button. */
     fun reset() {
         _session.value = null
+        _livePosition.value = null
         _bearing.value = null
         _error.value = null
     }

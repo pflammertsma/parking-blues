@@ -2,6 +2,9 @@ package dev.lammertsma.parkingblues.car.car
 
 import android.app.Presentation
 import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import androidx.annotation.OptIn
@@ -24,6 +27,8 @@ import androidx.car.app.navigation.model.MapController
 import androidx.core.graphics.drawable.IconCompat
 import dev.lammertsma.parkingblues.car.R
 import androidx.car.app.navigation.model.MapWithContentTemplate
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import dev.lammertsma.parkingblues.car.location.getLastZone
 import dev.lammertsma.parkingblues.car.location.getSimulatedRouteInitialBearing
@@ -33,6 +38,7 @@ import dev.lammertsma.parkingblues.car.location.lastKnownLocation
 import dev.lammertsma.parkingblues.car.location.setLastZone
 import dev.lammertsma.parkingblues.car.location.setTestLocationEnabled
 import dev.lammertsma.parkingblues.shared.ParkingSessionRepository
+import dev.lammertsma.parkingblues.shared.model.LatLon
 import dev.lammertsma.parkingblues.shared.model.ParkedSpot
 import dev.lammertsma.parkingblues.shared.model.ParkingSegment
 import dev.lammertsma.parkingblues.shared.model.SessionSnapshot
@@ -94,6 +100,14 @@ class MapSearchScreen(
     private val retryLon: Double? = null,
 ) : Screen(carContext), SurfaceCallback {
 
+    private companion object {
+        /** Camera glide between live fixes while following. */
+        const val FOLLOW_ANIMATION_MS = 1000L
+
+        /** The slow glide back to the vehicle after the idle timeout. */
+        const val RETURN_ANIMATION_MS = 2500L
+    }
+
     private var virtualDisplay: VirtualDisplay? = null
     private var presentation: Presentation? = null
     private var mapView: MapView? = null
@@ -119,11 +133,24 @@ class MapSearchScreen(
     // purely by our own recenterTarget() below to manually compensate.
     private var visibleArea = Rect(0, 0, 0, 0)
 
-    // The map follows the driver's live position by default (this is meant
-    // to be glanced at while driving, not manually wrangled) but a manual
-    // pan/zoom pauses that until the driver taps Recenter -- otherwise
-    // every ~2s position update would yank any manual look-around back.
-    private var isFollowingUser = true
+    // The map follows the vehicle by default (this is meant to be glanced at while driving, not
+    // manually wrangled). A manual pan/zoom pauses that -- otherwise every position update would
+    // yank a look-around back -- and the Recenter button appears. Following resumes when the driver
+    // presses it, or by itself once the map has been left alone for MapFollowState.IDLE_RESUME_MS,
+    // easing back slowly (RETURN_ANIMATION_MS) rather than snapping.
+    private val follow = MapFollowState()
+    private val isFollowingUser get() = follow.isFollowing
+    private val handler = Handler(Looper.getMainLooper())
+    private var slowReturnUntil = 0L
+    private var youMarker: Marker? = null
+
+    private val resumeWhenIdle = Runnable {
+        if (follow.resumeIfIdle()) {
+            slowReturnUntil = SystemClock.elapsedRealtime() + RETURN_ANIMATION_MS
+            followCamera()
+            invalidate() // the Recenter button goes away
+        }
+    }
 
     // True only while the host says the driver is actively panning the map
     // (PanModeListener, wired up via MapController below) -- see onScroll's
@@ -166,6 +193,19 @@ class MapSearchScreen(
                 }
             }
         }
+        // The marker and the camera follow the live fix, not the server's echo of it (see
+        // ParkingSessionRepository.livePosition), so the map moves with the car even while a
+        // response is slow, the server is rate limiting us or the session is being restarted.
+        lifecycleScope.launch {
+            repository.livePosition.collect { position ->
+                if (position != null) onLivePosition(position)
+            }
+        }
+        lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) {
+                handler.removeCallbacksAndMessages(null)
+            }
+        })
         lifecycleScope.launch {
             repository.error.collect { invalidate() }
         }
@@ -268,16 +308,51 @@ class MapSearchScreen(
     override fun onVisibleAreaChanged(visibleArea: Rect) {
         this.visibleArea = visibleArea
         if (isFollowingUser) {
-            repository.session.value?.let { snapshot ->
-                val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
-                mapView?.controller?.setCenter(recenterTarget(you))
-            }
+            youPosition()?.let { mapView?.controller?.setCenter(recenterTarget(it)) }
         }
+    }
+
+    /** Where the vehicle is: the live fix, or the session's own start until the first fix. */
+    private fun youPosition(): GeoPoint? =
+        repository.livePosition.value?.let { GeoPoint(it.lat, it.lon) }
+            ?: repository.session.value?.you?.let { GeoPoint(it.lat, it.lon) }
+
+    private fun onLivePosition(position: LatLon) {
+        val map = mapView ?: return
+        youMarker?.position = GeoPoint(position.lat, position.lon)
+        // Not before the first framing: renderMarkers zooms to the search radius first.
+        if (isFollowingUser && framedForSessionId != null) followCamera()
+        map.invalidate()
+    }
+
+    /** Eases the camera to the vehicle, slowly while returning from free exploration. */
+    private fun followCamera() {
+        val map = mapView ?: return
+        val you = youPosition() ?: return
+        val speed = if (SystemClock.elapsedRealtime() < slowReturnUntil) RETURN_ANIMATION_MS else FOLLOW_ANIMATION_MS
+        map.controller.animateTo(recenterTarget(you), map.zoomLevelDouble, speed)
+    }
+
+    /** The driver panned or zoomed: stop following, show Recenter, restart the idle countdown. */
+    private fun enterFreeExplore() {
+        val stoppedFollowing = follow.onUserInteraction()
+        handler.removeCallbacks(resumeWhenIdle)
+        handler.postDelayed(resumeWhenIdle, MapFollowState.IDLE_RESUME_MS)
+        if (stoppedFollowing) invalidate() // the Recenter button appears
+    }
+
+    /** Recenter pressed. */
+    private fun recenter() {
+        handler.removeCallbacks(resumeWhenIdle)
+        follow.resume()
+        slowReturnUntil = 0L
+        followCamera()
+        invalidate() // the Recenter button goes away
     }
 
     /** "Show on map" from an area's details: stop following the driver and look at the area. */
     private fun focusOnArea(center: GeoPoint) {
-        isFollowingUser = false
+        enterFreeExplore()
         mapView?.let {
             it.controller.setZoom(18.0)
             it.controller.animateTo(recenterTarget(center))
@@ -316,13 +391,13 @@ class MapSearchScreen(
         // Reverted until this can be confirmed on real touchscreen hardware
         // (where the host may gate this correctly on its own, since DHU's
         // mouse input may simply not be representative here).
-        isFollowingUser = false
+        enterFreeExplore()
         // FIXME if this is caused by scroll wheel up/down, this should zoom in the map, not scroll it
         mapView?.controller?.scrollBy(distanceX.toInt(), distanceY.toInt())
     }
 
     override fun onScale(focusX: Float, focusY: Float, scaleFactor: Float) {
-        isFollowingUser = false
+        enterFreeExplore()
         val map = mapView ?: return
         // Focus-anchored zoom: osmdroid's setZoom() keeps the map's current
         // center fixed, not the pinch/scroll focus point, so compensate by
@@ -337,6 +412,7 @@ class MapSearchScreen(
     }
 
     override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
+        youMarker = null
         mapView?.onPause()
         mapView?.onDetach()
         mapView = null
@@ -409,17 +485,22 @@ class MapSearchScreen(
         // "You" marker drawn LAST so it is always on top of all other markers and zones
         val currentBearing = repository.bearing.value ?: lastBearing ?: 0f
         markers += Marker(map).apply {
-            position = GeoPoint(snapshot.you.lat, snapshot.you.lon)
+            position = youPosition() ?: GeoPoint(snapshot.you.lat, snapshot.you.lon)
             title = "You"
             icon = youMarkerIcon
             setAnchor(0.5f, 0.5f)
             rotation = -currentBearing // osmdroid Marker.draw applies -mBearing to canvas rotate
             setFlat(true) // stays map-relative, not screen-relative
             setInfoWindow(null)
-        }.also { map.overlays.add(it) }
+        }.also {
+            map.overlays.add(it)
+            youMarker = it
+        }
 
+        // Following after the first framing is driven by the live position (onLivePosition), not
+        // by every snapshot, so a server echo never restarts the camera animation a second time.
         if (isFollowingUser) {
-            val you = GeoPoint(snapshot.you.lat, snapshot.you.lon)
+            val you = youPosition() ?: GeoPoint(snapshot.you.lat, snapshot.you.lon)
             if (framedForSessionId != snapshot.sessionId) {
                 val frameCamera = {
                     if (map.width > 0 && map.height > 0) {
@@ -444,8 +525,6 @@ class MapSearchScreen(
                         }
                     })
                 }
-            } else {
-                map.controller.animateTo(recenterTarget(you))
             }
         }
         map.invalidate()
@@ -491,22 +570,21 @@ class MapSearchScreen(
             )
             .setActionStrip(
                 ActionStrip.Builder()
-                    .addAction(
-                        Action.Builder()
-                            .setIcon(
-                                CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_recenter))
-                                    .setTint(CarColor.DEFAULT)
+                    .apply {
+                        // Only while the driver is exploring: following needs no button.
+                        if (!isFollowingUser) {
+                            addAction(
+                                Action.Builder()
+                                    .setIcon(
+                                        CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_recenter))
+                                            .setTint(CarColor.DEFAULT)
+                                            .build()
+                                    )
+                                    .setOnClickListener { recenter() }
                                     .build()
                             )
-                            .setOnClickListener {
-                                isFollowingUser = true
-                                repository.session.value?.let { snap ->
-                                    val you = GeoPoint(snap.you.lat, snap.you.lon)
-                                    mapView?.controller?.animateTo(recenterTarget(you))
-                                }
-                            }
-                            .build()
-                    )
+                        }
+                    }
                     .addAction(
                         Action.Builder()
                             .setTitle("Parked here")

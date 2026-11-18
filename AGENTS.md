@@ -120,6 +120,10 @@ The algorithm (candidate generation, DBSCAN clustering, scoring, retargeting hys
     * Your own devices and the DHU already have the permission, and `adb shell pm grant` hides it too. **Before every release, test a fresh install with nothing granted**: `adb uninstall <id>`, install the *release* APK, launch, and try both Allow and Don't allow, on a Play-less AAOS image (`Automotive_Portrait_API_34-ext9`) and a Play one (`Automotive_1024p_landscape_API_32`).
 12. **Marker sizes differ per surface:**
     * `MapIcons` sizes are tuned for the projected car map; the phone passes `MapIcons.PHONE_ICON_SCALE` to render them smaller.
+15. **The car map follows the vehicle, and gives up following only temporarily:**
+    * `MapSearchScreen` follows the vehicle by default. A pan or zoom (`onScroll`/`onScale`) stops following and shows the **Recenter** action; following resumes on Recenter or after `MapFollowState.IDLE_RESUME_MS` (30 s) without a gesture, easing back over `RETURN_ANIMATION_MS`. The Recenter action exists only while exploring, so the action strip changes only on those two transitions (`invalidate()` is host-throttled, gotcha 1). State and timing rules are `MapFollowState` (unit-tested); the screen owns the `Handler` timer.
+    * The "you" marker and the camera follow `ParkingSessionRepository.livePosition` (the latest fix, published *before* the server round trip), not the snapshot's `you` (the server's echo of an older fix). Following the echo froze the map whenever a response was slow or the server answered 429 (`position_per_session` is 90/min and the fused provider can deliver faster than 1 Hz when other apps ask for it). Do not move the marker or camera from `snapshot.you`.
+    * **Test it** on the AAOS emulator with Developer options → "Use test location" (`adb emu geo fix` does not reach the fused provider, and the Play-less image has no Google Play services for it at all): drive, swipe the map (Recenter appears), wait 30 s (it glides back), press Recenter.
 
 ---
 
