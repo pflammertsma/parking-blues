@@ -352,6 +352,7 @@ class SessionStore:
         now: datetime | None = None,
         radius_m: float = DEFAULT_INITIAL_RADIUS_M,
         max_radius_m: float = NEARBY_MAX_RADIUS_M,
+        exclude_ids: set[str] | None = None,
     ) -> tuple[list[list[ParkingSegment]], float]:
         """"What is parked near here?" without keeping a session: the same
         ranked clusters create() starts from, widening the search in steps
@@ -362,7 +363,7 @@ class SessionStore:
         now = now or datetime.now(ZURICH_TZ)
         while True:
             clusters = self._candidates_for(
-                zone_filter, radius_m, lat, lon, set(), preferred_duration_minutes, now
+                zone_filter, radius_m, lat, lon, exclude_ids or set(), preferred_duration_minutes, now
             )
             if clusters or radius_m >= max_radius_m:
                 return clusters, radius_m

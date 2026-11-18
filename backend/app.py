@@ -27,6 +27,15 @@ from .parking_data import ALL_SEGMENTS
 from .geo import haversine_m
 from .models import ParkingSegment, ZoneType
 from .session import ParkingSession, SessionStore
+from .route_planner import (
+    MAX_TRIP_M,
+    ROUTING_BUSY,
+    ROUTING_UNAVAILABLE,
+    OsrmRouter,
+    Router,
+    RoutingError,
+    plan_route,
+)
 from .tiles import TileError, TileProxy
 
 ZONE_FILTERS: dict[str, set[ZoneType]] = {
@@ -67,6 +76,10 @@ class RateLimits:
     auth: str = "20 per minute;200 per day"                 # sign-in/refresh, per IP
     nearby: str = "120 per minute;3000 per day"             # parking near a point, per IP
     nearby_account: str = "600 per minute"
+    # Route planning calls a public OpenStreetMap routing server for every request (see
+    # route_planner.py), so it is kept low.
+    route: str = "10 per minute;200 per day"
+    route_account: str = "40 per minute"
     tiles: str = "3000 per minute"                          # map tiles, per IP (a pan loads dozens)
     # Signed-in callers are counted per account instead of per IP, and get
     # more headroom: abuse can be traced to (and blocked on) an account.
@@ -104,6 +117,7 @@ def create_app(
     rate_limits: RateLimits | None = None,
     auth: AuthService | None = None,
     tiles: TileProxy | None = None,
+    router: Router | None = None,
 ) -> Flask:
     app = Flask(__name__, static_folder=WEB_DIR, static_url_path="")
     app.json.sort_keys = False
@@ -123,6 +137,8 @@ def create_app(
     guard = AbuseGuard(auth) if auth is not None else None
     if tiles is None:
         tiles = TileProxy.from_env()
+    if router is None:
+        router = OsrmRouter.from_env()
 
     # Must be registered before the limiter below: Flask runs before_request
     # hooks in registration order, and the limiter's key depends on who is calling.
@@ -524,6 +540,91 @@ def create_app(
             areas=areas[:MAX_AREAS],
         )
         response.headers["Cache-Control"] = "private, max-age=20"
+        return response
+
+    @app.post("/api/route")
+    @limiter.limit(tiered(limits.route, limits.route_account), exempt_when=is_owner)
+    def route():
+        """EXPERIMENT: a drive from `from` to `to` that passes the parking areas most likely to
+        have a space near `to`, with the road rules from an OSM routing server. Stateless.
+        See route_planner.py for the model and for why this may move to a self-hosted
+        router or to Google routing."""
+        data = request.get_json(silent=True) or {}
+        start = parse_coordinates(data.get("from") if isinstance(data.get("from"), dict) else {})
+        dest = parse_coordinates(data.get("to") if isinstance(data.get("to"), dict) else {})
+        if start is None or dest is None:
+            return jsonify(error="from and to must each have a lat and lon within range"), 400
+        if haversine_m(start[0], start[1], dest[0], dest[1]) > MAX_TRIP_M:
+            return jsonify(error="the start is too far from the destination for a parking route"), 400
+
+        zone = data.get("zone", "both")
+        if zone not in ZONE_FILTERS:
+            return jsonify(error=f"zone must be one of {list(ZONE_FILTERS)}"), 400
+        stay_minutes = data.get("stay_minutes")
+        if stay_minutes is not None:
+            if isinstance(stay_minutes, bool) or not isinstance(stay_minutes, int)                     or not 0 < stay_minutes <= 24 * 60:
+                return jsonify(error="stay_minutes must be a number of minutes between 1 and 1440"), 400
+        # Spots the driver has already been past: not worth routing to again.
+        exclude = data.get("exclude", [])
+        if not isinstance(exclude, list) or len(exclude) > 500 or not all(
+            isinstance(item, str) and len(item) <= 64 for item in exclude
+        ):
+            return jsonify(error="exclude must be a list of at most 500 spot ids"), 400
+
+        now = datetime.now(ZURICH_TZ)
+        clusters, _ = store.nearby(
+            ZONE_FILTERS[zone], dest[0], dest[1], preferred_duration_minutes=stay_minutes,
+            now=now, exclude_ids=set(exclude),
+        )
+        areas = [
+            [seg for seg in cluster if seg.zone_type == zone_type]
+            for cluster in clusters
+            for zone_type in (ZoneType.BLUE, ZoneType.WHITE)
+        ]
+        areas = [spots for spots in areas if spots]
+        try:
+            plan = plan_route(router, start, dest, areas)
+        except RoutingError as exc:
+            # The log gets the detail; the caller gets a fixed message and a code to act on.
+            app.logger.warning("route planning failed (%s): %s", exc.code, exc)
+            status = {ROUTING_UNAVAILABLE: 502, ROUTING_BUSY: 503}.get(exc.code, 422)
+            return jsonify(error=exc.public_message, code=exc.code), status
+        if plan is None:
+            return jsonify(error="No parking known near that destination.", code="no_parking_nearby"), 404
+
+        stops = []
+        for order, stop in enumerate(plan.stops, start=1):
+            body = area_json(order, stop.candidate.spots, dest[0], dest[1], now)
+            body.pop("spots", None)
+            body["chance"] = round(stop.candidate.chance, 2)
+            body["eta_s"] = round(stop.eta_s)
+            stops.append(body)
+        response = jsonify(
+            experimental=True,
+            start={"lat": start[0], "lon": start[1]},
+            destination={"lat": dest[0], "lon": dest[1]},
+            stops=stops,
+            route={
+                "distance_m": round(plan.route.distance_m),
+                "duration_s": round(plan.route.duration_s),
+                "path": [[round(lat, 5), round(lon, 5)] for lat, lon in plan.route.path],
+            },
+            chance_of_parking=round(plan.chance_of_parking, 2),
+            expected_minutes=round(plan.expected_minutes, 1),
+            # Where the road starts, when that is away from the driver (they are off a road, or the
+            # nearest road was cut off): the app draws the gap between the two.
+            start_snap=(
+                {
+                    "lat": round(plan.start_gap.lat, 6),
+                    "lon": round(plan.start_gap.lon, 6),
+                    "distance_m": round(plan.start_gap.distance_m),
+                    "name": plan.start_gap.name,
+                }
+                if plan.start_gap is not None
+                else None
+            ),
+        )
+        response.headers["Cache-Control"] = "no-store"
         return response
 
     @app.get("/api/session/<session_id>")
